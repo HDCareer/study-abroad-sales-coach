@@ -4,7 +4,7 @@
 
 1. 下载 Release 中的 `skill3-sales-coach-public-v0.7.15-public.1.zip`。不要只下载单个SKILL.md，否则参考资料不完整。
 2. 在自己的浏览器打开 https://gemini.google.com 。侧栏找到 Customize／自定义；没有时查看 More／更多，再进入 Skills。
-3. 点 Upload／上传，选择这个ZIP。预览名称 `skill3-sales-coach`，保留资料后点 Create／创建，不使用自动重写来缩短规则。
+3. 点 Upload／上传。选“文件”时上传这个ZIP；如果窗口标题是“选择要上传的文件夹”，先把ZIP解压到一个文件夹，再选择直接包含SKILL.md和references的那层文件夹，不能把ZIP当作文件夹选择。预览名称 `skill3-sales-coach`，保留资料后点 Create／创建，不使用自动重写来缩短规则。
 4. 新开聊天，输入 `/`（新版可能为 `@`）选择这个Skill，再输入“开始体验”。
 5. 应出现内置澳洲本科经济学案例的简短背景、销售建议和客户回复；示例为三小时共420澳元，全部是虚构测试条件。
 
