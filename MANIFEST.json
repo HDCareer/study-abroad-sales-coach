@@ -1,0 +1,29 @@
+{
+  "version": "0.7.15-public.1",
+  "source_version": "0.7.15",
+  "private_policy_included": false,
+  "files": {
+    ".gitignore": "7a720e5c7d07fb80408139ae2bffecb6a2a565c5236cdc93dffdf6934ca9cb6e",
+    "LICENSE.md": "c994c6c0a6ea66205da4735687b117cdf4e320e70a0be1e47e16dc209acc8846",
+    "README.md": "7f59ec6034e32c93736f598139a6e6d3dc88281c940b71099a2fb74206849dec",
+    "SKILL.md": "49c353a6c83aa6598d772312815372c25fa0481c1053c104bd93497c7c7d1090",
+    "agents/openai.yaml": "5c977cce6089ba8a6b1a8a70d9e581738aae3d0f87adc082e06e9f48b313c7ae",
+    "docs/INSTALL.md": "00ae8f7fb4f5e9aa550254585277aabb88e863920b5fa8146ae365c11362f00e",
+    "references/business-facts.md": "208b91a4f6e490b3eefb4b4999d34cf3c8fe4022139e238a3a901504351fbfea",
+    "references/closing.md": "9516eddda0c25d2a505857b42205e3a312b2a3dc5171234f7ff6d13946bb1941",
+    "references/consultation-example.md": "f8d8aaee35bdacb15c1b70f4f5b569069a1227c90c8f129f41f8b9d0a6986d4b",
+    "references/organization-policy.example.md": "57d7c44e04b1c3919657aa4724e62b65cfd20cd2a308ec8ae68b22cb69ab3a43",
+    "references/retrospective.md": "e8820fa435bf0ec6d7083be5491488596babb14c967e95d42cb57d24eaf1f20b",
+    "references/trial-followup.md": "3b56dfea94f3a9f208065e6fb72ec6cd2aefe5c510bd80f5eadbd51d208ed51f",
+    "references/tryout.md": "c564cd39ac1f19144e32e4dda8d2b71228d821c20fe62faa827f4ef90a53dc44",
+    "references/scenes/01-09-need.md": "ebf4db15d605f1aaa7a1dbbc8d5e1884b446cb3bed7b9b2bcaaa952742f6ee4a",
+    "references/scenes/10-17-timing.md": "5ba6c97ebc1a07fb0a30dfbe44cb4b4e90b32b25717650b32f935ff74e80c497",
+    "references/scenes/18-21-outcomes.md": "bfa9a4c1f36c7b653d50df4d64d61f7b67d00019b9fa889b6bfb5bc925c1fc70",
+    "references/scenes/22-27-teachers.md": "98e11e66c2fad872badb1575c2fa321c44481e3e39e80af492baf8f78b3e8585",
+    "references/scenes/28-33-value.md": "3b3c98b927ea9147885bfbc2b657b4e3fbf93252c4a41b57a9b55b47d5671350",
+    "references/scenes/34-40-trial-delivery.md": "e714645f90c92bd2d9c0e804be3d90485f589ea28b6610bd96ac37fc66b3e73d",
+    "references/scenes/41-43-trust-boundary.md": "1480153467c37d30b0c4892b2a8ec1b583a91825dda514ee3ea7d54142ea5ff1",
+    "references/scenes/44-48-decision.md": "385213adb8ded9ce1560c5efb730a2103cf471df7e8ce15d6e54ff480d8372b4",
+    ".github/ISSUE_TEMPLATE/feedback.yml": "e4bab38893484f62cd2e146d359a33aec598b6fd0b682589a040144205f59b93"
+  }
+}

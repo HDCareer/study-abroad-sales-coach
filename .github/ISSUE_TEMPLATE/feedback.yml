@@ -1,0 +1,44 @@
+name: 使用反馈
+description: 哪一步帮上忙，哪一步还需要改？请只提交可以公开的去身份化片段。
+title: "[反馈] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: "这里是公开页面。请勿提交客户姓名、联系方式、原始截图、订单、真实价表或内部文件。模拟或充分改写即可。"
+  - type: input
+    id: environment
+    attributes:
+      label: 平台、模型和Skill版本
+      placeholder: Gemini / 模型不详 / 0.7.15-public.1
+    validations:
+      required: true
+  - type: dropdown
+    id: adoption
+    attributes:
+      label: 这条建议你怎么处理？
+      options:
+        - 直接用了
+        - 改了再用
+        - 没有用
+        - 安装或读取资料失败
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: 当时的关键背景和客户最后一句
+      description: 只提供理解问题需要的信息；若改写或模拟请注明。
+    validations:
+      required: true
+  - type: textarea
+    id: response
+    attributes:
+      label: AI原回复，以及你实际的修改或没用的原因
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: 后续反应（可选）
+      description: 没有执行或后续证据就写未确认，不用推测成交效果。

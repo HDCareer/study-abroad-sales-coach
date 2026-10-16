@@ -1,0 +1,4 @@
+interface:
+  display_name: "SkillⅢ｜留学课程辅导带单"
+  short_description: "上传客户对话，获得有依据的下一步建议和微信话术；没有案例也能直接开始体验"
+  default_prompt: "使用 $skill3-sales-coach 开始体验。已有客户材料就直接分析，否则从内置虚构起点给第一条建议。"
