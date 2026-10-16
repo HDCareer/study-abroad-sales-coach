@@ -1,21 +1,23 @@
-# SkillⅢ｜留学课程辅导销售助手
+# 留学辅导销售助手
 
 把客户最新一句话或聊天截图交给 AI，获得**下一步建议和一条可发送的回复**。
 
 适合一线销售在承接、需求判断、方案报价、试听、异议、成交交接和跟进中使用。保留完整销售流程及48个场景的话术方法，一个客户一个对话。
 
-**公开体验版 0.7.15-public.1。** 来源于内部0.7.15版本，真实价格与机构政策已移除，示例金额均为虚构。欢迎指出哪里能用、哪里仍需重写。尚不承诺在各平台、各模型上效果一致，也没有真实转化率提升证据。
+**公开体验版 0.7.15-public.2。** 来源于内部0.7.15版本，真实价格与机构政策已移除，示例金额均为虚构。欢迎指出哪里能用、哪里仍需重写。尚不承诺在各平台、各模型上效果一致，也没有真实转化率提升证据。
+
+本次仅统一公开名称和安装标识，销售方法与话术未改。旧仓库链接会跳转到这里，已安装的旧版可以继续使用。
 
 ## 立即使用
 
-- [下载 Gemini Skill 安装包](https://github.com/HDCareer/skill3-sales-coach/releases/latest/download/skill3-sales-coach-public-v0.7.15-public.1.zip)
-- [只有 Gems 入口？下载 Gem 备用资料](https://github.com/HDCareer/skill3-sales-coach/releases/latest/download/skill3-sales-coach-public-Gem-v0.7.15-public.1.zip)
+- [下载 Gemini Skill 安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/latest/download/study-abroad-sales-coach-public-v0.7.15-public.2.zip)
+- [只有 Gems 入口？下载 Gem 备用资料](https://github.com/HDCareer/study-abroad-sales-coach/releases/latest/download/study-abroad-sales-coach-public-Gem-v0.7.15-public.2.zip)
 - [两分钟安装与第一次检查](docs/INSTALL.md)
-- [提交使用反馈](https://github.com/HDCareer/skill3-sales-coach/issues/new?template=feedback.yml)
+- [提交使用反馈](https://github.com/HDCareer/study-abroad-sales-coach/issues/new?template=feedback.yml)
 
 装好后，选择本 Skill，输入：
 
-> 使用 skill3-sales-coach 开始体验。
+> 使用 study-abroad-sales-coach 开始体验。
 
 没有客户材料也可以从内置虚构案例开始。已有材料就直接发最新对话，补一句“接下来怎么回”。请先去掉姓名、联系方式、订单号等不必要的客户信息。
 
