@@ -1,4 +1,4 @@
 interface:
   display_name: "留学辅导销售助手"
-  short_description: "上传客户对话，获得有依据的下一步建议和微信话术；没有案例也能直接开始体验"
-  default_prompt: "使用 $study-abroad-sales-coach 开始体验。已有客户材料就直接分析，否则从内置虚构起点给第一条建议。"
+  short_description: "逐客带单或整批聊天复盘，定位谈单阶段、订单机会与补救话术，多销售分别输出"
+  default_prompt: "使用 $study-abroad-sales-coach：已有单客材料就带单，整批聊天就按销售分别复盘，没有材料则从内置虚构起点开始体验。"
