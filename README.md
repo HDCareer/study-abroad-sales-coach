@@ -2,25 +2,26 @@
 
 为留学课程辅导销售提供下一步建议、客户参考话术和聊天记录复盘。实时带单一客一对话，销售审核后发送；不会自动联系客户或收款。
 
-**当前公开试用版：0.7.22-public.1，对应内部规则0.7.22。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
+**当前公开试用版：0.7.25-public.1，对应内部规则0.7.25。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
 
 ## 下载与使用
 
-- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.22-public.1/study-abroad-sales-coach-public-v0.7.22-public.1.zip)：保留全部目录，不要只复制SKILL.md。
-- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.22-public.1/study-abroad-sales-coach-public-Gem-v0.7.22-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
+- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.25-public.1/study-abroad-sales-coach-public-v0.7.25-public.1.zip)：保留全部目录，不要只复制SKILL.md。
+- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.25-public.1/study-abroad-sales-coach-public-Gem-v0.7.25-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
 - [安装与升级说明](docs/INSTALL.md)
 - [团队试用与反馈记录](docs/TEAM-TRIAL.md)
-- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.22-public.1)
+- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.25-public.1)
 
 公开版包含五阶段、三性五定、48个场景及301段参考话术，保留单客带单和按销售分别复盘的能力。真实价表、内部客户分类标准、业绩目标、供应商及客户记录不在公开包中。实际使用时私下补充[本机构业务信息](references/organization-policy.example.md)，只补当前决定需要的项目。
 
 ## 本次更新
 
-- 同步0.7.17至0.7.21的表达调整：日常客户稿最多200个非空白字符、最多三段，完整综合方案保留例外；强调信息取舍、自然衔接、具体帮助与避免重复。
-- 同步0.7.22的业务协作：回传逐项对应承诺，具体服务按范围和权限协商，有真实师资资料时提醒销售主动发送。
-- Gem核心知识包含当前全部非场景参考，包括微信表达和聊天复盘文件，避免上传旧核心漏掉新规则。
+- 批量复盘默认每位销售一份简明管理报告：首页关键数字与最多三个卡点，五环节图点击到原因、客户和带时间/行号的原话，末尾必须跟回名单。
+- 每案先评判断与路径，再评话术组织；独立举证，避免重复归责。对应实际培训来源、练习与验收，每人最多三个带教重点。
+- 区分首课付款、预约、部分授课、完整完课与正式购买；预警阈值由本机构提供，不拿缺记录或报价补造成交。
+- 校正数据替代旧批，保留首次观察基线；重复客户按稳定来源识别。保存记录不等于模型永久记忆，单批报告不作淘汰结论。
 
-销售判断框架保持。简短、流畅或模拟客户认可，都不等于实际销售效果；复杂价值异议、推荐稳定性和人工改写负担仍需观察。
+完整Skill可生成可点击HTML；Gem文本知识包保留方法与结构，但不能执行本地脚本。保留原实时带单规则、48场景和301段参考话术。本次不宣称已证明真实业绩改善。
 
 ## 开始带单或复盘
 

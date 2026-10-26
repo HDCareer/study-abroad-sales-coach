@@ -452,10 +452,17 @@ def main(argv=None):
     try:
         data = json.loads(args.input.read_text(encoding="utf-8-sig"))
         validate(data)
+        management = None
+        if "management" in data:
+            import management_review as management
+            management.validate(data, sys.modules[__name__])
         counts = stats(data)
         source_checked = None
         if args.source:
-            source_checked = verify_source(data, json.loads(args.source.read_text(encoding="utf-8-sig")))
+            source = json.loads(args.source.read_text(encoding="utf-8-sig"))
+            source_checked = verify_source(data, source)
+            if management:
+                management.validate(data, sys.modules[__name__], source)
         if args.check_only:
             print(json.dumps({"valid": True, "sales": data["sales"]["name"], "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
             return 0
@@ -465,7 +472,7 @@ def main(argv=None):
         private_output(args.output)
         require(not args.output.exists() or args.overwrite, "--output", "文件已存在；默认不覆盖，已有授权才可加 --overwrite")
         css = (Path(__file__).resolve().parent.parent / "assets" / "chat-review.css").read_text(encoding="utf-8")
-        result = render(data, css)
+        result = management.render(data, sys.modules[__name__]) if management else render(data, css)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w" if args.overwrite else "x", encoding="utf-8", newline="\n") as handle:
             handle.write(result)
