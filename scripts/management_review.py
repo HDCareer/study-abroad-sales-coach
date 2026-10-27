@@ -44,6 +44,12 @@ def validate(data, api, source=None):
             week_ids.add(c['id'])
         if not c['included']:
             continue
+        if 'assessment' in c['validity']:
+            try:
+                req(dt(c['validity']['assessment']['as_of']) == cutoff, p + '.validity.assessment.as_of',
+                    '有效性判断时点必须与管理报告资料截止一致')
+            except (ValueError, TypeError, KeyError):
+                req(False, p + '.validity.assessment.as_of', '判断与管理报告的时间格式或时区口径不一致')
         messages = {x['id']: x for x in c['source_messages']}
 
         def refs(value, path, needed=False, week_only=False):
@@ -66,6 +72,9 @@ def validate(data, api, source=None):
         api.choice(week_validity.get('status'), api.VALIDITY, p + '.week.validity.status')
         api.string(week_validity.get('reason'), p + '.week.validity.reason')
         refs(week_validity.get('refs'), p + '.week.validity.refs', week['included'], week['included'])
+        if 'price_silence' in week_validity:
+            import validity_evidence
+            validity_evidence.validate_price_silence(week_validity, c['source_messages'], m['week_end'], api)
         phases = api.obj(week.get('phases'), p + '.week.phases')
         req(set(phases) == set(api.STAGES), p, '周阶段必须保留五列')
         for key, phase in phases.items():
@@ -160,6 +169,8 @@ def validate(data, api, source=None):
     if 'coaching' in m:
         import coaching_review
         coaching_review.validate(data, api)
+    import longitudinal_review
+    longitudinal_review.validate_input(data, api)
     return data
 
 
@@ -320,8 +331,11 @@ def render(data, api):
         morequotes = ''.join(api.quote(c, ref) for ref in refs)
         formal = '已正式购买' if cm['formal']['confirmed'] else '未见正式购买／结果待核'
         layer_detail = coaching.detail(c, api) if coaching else ''
+        if 'assessment' in c['validity']:
+            import validity_evidence
+            layer_detail = validity_evidence.detail(c, api) + layer_detail
         details.append(f'''<article class="case-detail" id="case-{e(c['id'])}" hidden>
-<div class="case-head"><div><h2>{e(c['name'])} · {e(c['id'])}</h2><p>{e(c['headline'])}</p></div><span class="badge">{e(api.VALIDITY[c['validity']['status']])}</span></div>
+<div class="case-head"><div><h2>{e(c['name'])} · {e(c['id'])}</h2><p>{e(c['headline'])}</p></div><span class="badge">{e(api.validity_label(c['validity']))}</span></div>
 <div class="facts"><span>{e(trial_pay)}</span><span>{e(completion)}</span><span>{e(formal)}</span><span class="badge {w['code']}">{e(w['label'])} {e(w.get('elapsed',''))}</span></div>
 <p class="muted">{e(t['completion_note'])}；{e(t['time_note'])}</p>
 <p><b>当前判断：</b>{e(c['current_problem'])}</p><p class="muted">{e(c['attribution'])}</p>{layer_detail}
@@ -329,7 +343,7 @@ def render(data, api):
 <div class="draft">{e(c['recovery']['script']) or '本案不生成推销稿；按上述内部动作处理。'}</div><p class="muted">使用前提：{e(c['recovery']['script_conditions'])}</p>
 <details><summary>更多依据：有效性、五环节、付款与完课</summary><p>{e(c['validity']['reason'])}</p>{phase_html}<p>{e(c['order']['summary'])}</p>{morequotes}</details>
 <p><b>面谈重点：</b>{e(c['recovery']['coaching_question'])}</p></article>''')
-    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.VALIDITY[c["validity"]["status"]])}</td><td>{e(c["headline"])}</td><td>{"本周" if c["management"]["week"]["included"] else "仅截止后更新"}</td></tr>' for c in all_cases)
+    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本周" if c["management"]["week"]["included"] else "仅截止后更新"}</td></tr>' for c in all_cases)
     caution = f'上周确认新增{ s["new_confirmed"] }位，新增归属待核{ s["new_unknown"] }位；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}位，其中{s["undated_formal"]}位确认日期不明；另有{s["undated_trial"]}位首课付款日期不明，均未强填本周收款。'
     known_receipts = f'已能确认金额的正式订单人民币到账合计：¥{s["known_total"]:,.2f}，不代表全部实际收入。' if s['known_total'] else '正式订单实收金额未能从记录中核清，不记为零收入。'
     exclusions = ''.join(f'<li>{e(c["id"])} · {e(c["name"])}：{e(c["exclusion_reason"])}</li>' for c in data['cases'] if not c['included'])

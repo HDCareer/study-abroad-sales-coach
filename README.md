@@ -2,26 +2,26 @@
 
 为留学课程辅导销售提供下一步建议、客户参考话术和聊天记录复盘。实时带单一客一对话，销售审核后发送；不会自动联系客户或收款。
 
-**当前公开试用版：0.7.25-public.1，对应内部规则0.7.25。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
+**当前公开试用版：0.7.30-public.1，对应内部规则0.7.30。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
 
 ## 下载与使用
 
-- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.25-public.1/study-abroad-sales-coach-public-v0.7.25-public.1.zip)：保留全部目录，不要只复制SKILL.md。
-- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.25-public.1/study-abroad-sales-coach-public-Gem-v0.7.25-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
+- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.30-public.1/study-abroad-sales-coach-public-v0.7.30-public.1.zip)：保留全部目录，不要只复制SKILL.md。
+- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.30-public.1/study-abroad-sales-coach-public-Gem-v0.7.30-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
 - [安装与升级说明](docs/INSTALL.md)
 - [团队试用与反馈记录](docs/TEAM-TRIAL.md)
-- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.25-public.1)
+- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.30-public.1)
 
 公开版包含五阶段、三性五定、48个场景及301段参考话术，保留单客带单和按销售分别复盘的能力。真实价表、内部客户分类标准、业绩目标、供应商及客户记录不在公开包中。实际使用时私下补充[本机构业务信息](references/organization-policy.example.md)，只补当前决定需要的项目。
 
 ## 本次更新
 
-- 批量复盘默认每位销售一份简明管理报告：首页关键数字与最多三个卡点，五环节图点击到原因、客户和带时间/行号的原话，末尾必须跟回名单。
-- 每案先评判断与路径，再评话术组织；独立举证，避免重复归责。对应实际培训来源、练习与验收，每人最多三个带教重点。
-- 区分首课付款、预约、部分授课、完整完课与正式购买；预警阈值由本机构提供，不拿缺记录或报价补造成交。
-- 校正数据替代旧批，保留首次观察基线；重复客户按稳定来源识别。保存记录不等于模型永久记忆，单批报告不作淘汰结论。
+- 有效性逐项证据与时点更新，组合展示客户等级和报价后沉默状态；机构阈值需自行提供。
+- 同一分析生成主管简明HTML与固定JSON，保持统计、预警、两层带教与跟回名单一致。
+- 补入申诉、人工复核、个案更正及同类标准修订规则；人工记录不能由AI自证。
+- 可生成有期限的跨周快照及观察表：稳定身份续接、同周版本替代、重复问题去重、实际训练前后观察。没有稳定身份或执行记录不猜补，未确认的矛盾先待核。
 
-完整Skill可生成可点击HTML；Gem文本知识包保留方法与结构，但不能执行本地脚本。保留原实时带单规则、48场景和301段参考话术。本次不宣称已证明真实业绩改善。
+保留48场景与301段话术方法。原聊天和管理档案留在私有环境；保存期限须由使用机构明确配置。公开版不含作者机构截图、价格、分类门槛、绩效目标或客户资料，不承诺自动长期记忆、实际转化改善或跨平台安装效果。
 
 ## 开始带单或复盘
 

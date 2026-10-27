@@ -108,6 +108,8 @@ def validate(data, api):
         for key in ('action', 'exercise', 'pass_criteria'):
             api.string(training.get(key), path + '.training.' + key)
         api.require(training.get('status') == 'proposed', path + '.training.status', '未发生训练只能记建议')
+    import sales_diagnosis
+    sales_diagnosis.validate(data, api)
     return data
 
 
@@ -129,7 +131,9 @@ def overview(data, api):
     for p in cfg['plans']:
         plans.append(f'<details><summary><b>{e(LAYERS[p["layer"]])}：{e(p["skill"])}</b></summary><p><b>安排：</b>{e(p["action"])}</p><p><b>怎么练：</b>{e(p["exercise"])}</p><p><b>验收：</b>{e(p["pass_criteria"])}</p><p class="muted">下一次观察：{e(p["next_review"])}</p>{links([byid[cid] for cid in p["case_ids"]])}</details>')
     baseline = '校正后的首次观察；上一批混入数据已作废，不参与趋势。' if cfg['basis'] == 'corrected_baseline' else '当前观察基线；尚无可比较的训练后表现。'
-    return f'''<section class="panel" id="coaching-overview"><h2>两层复盘 · 先判断，再表达</h2><p class="muted">截至最新资料，覆盖本批{len(cases)}案。同案可在两层分别有缺口，人数不相加；执行兑现另列，未成交不等于销售有错。</p>{''.join(rows)}<details><summary>值得保留的做法</summary>{strengths or '<p>本批证据尚不足以单独归纳稳定优势。</p>'}</details><h3>本次带教行动 · 建议，尚未执行</h3>{''.join(plans)}<details><summary>持续观察与岗位判断边界</summary><p>{e(baseline)}</p><p>{e(cfg['assessment'])}</p><p>训练是否执行、下一批同类表现与业务结果尚待记录。当前不据此给出淘汰结论。原始资料与观察文件仍遵守现有保留期限，不作永久记忆承诺。</p></details></section>'''
+    import sales_diagnosis
+    patterns = sales_diagnosis.overview(data, api)
+    return f'''<section class="panel" id="coaching-overview"><h2>两层复盘 · 先判断，再表达</h2><p class="muted">截至最新资料，覆盖本批{len(cases)}案。同案可在两层分别有缺口，人数不相加；执行兑现另列，未成交不等于销售有错。</p>{patterns}{''.join(rows)}<details><summary>值得保留的做法</summary>{strengths or '<p>本批证据尚不足以单独归纳稳定优势。</p>'}</details><h3>本次带教行动 · 建议，尚未执行</h3>{''.join(plans)}<details><summary>持续观察与岗位判断边界</summary><p>{e(baseline)}</p><p>{e(cfg['assessment'])}</p><p>训练是否执行、下一批同类表现与业务结果尚待记录。当前不据此给出淘汰结论。原始资料与观察文件仍遵守现有保留期限，不作永久记忆承诺。</p></details></section>'''
 
 
 def detail(case, api):
@@ -147,7 +151,9 @@ def detail(case, api):
         source_label = '原话术库逐字摘录' if item['source_kind'] == 'scene' else 'Skill运行规则（非原话术逐字）'
         sources.append(f'<details><summary>{e(item["locator"])} · {e(APPLICATION[item["application"]])}</summary><p><span class="badge">{source_label}</span> {e(LAYERS[item["layer"]])}</p><p class="muted">{e(item["path"])}</p><blockquote class="quote">{e(item["quote"])}</blockquote><p><b>本案对应：</b>{e(item["rationale"])}</p>{quotes}</details>')
     tr = layers['training']
-    return f'''<div class="analysis-node two-layer"><h3>两层结论：{e(PRIMARY[layers['primary']])}</h3>{''.join(rows)}<p class="muted">{e(layers['causal_limit'])}</p><details class="library-mapping"><summary>对应培训与原话术 · {len(sources)}处</summary>{''.join(sources) or '<p>缺证或本案不适用，未强行指定背诵段落。</p>'}</details><details><summary>本案训练：{e(TRAINING[tr['kind']])} · 待执行</summary><p><b>练什么：</b>{e(tr['action'])}</p><p><b>怎么练：</b>{e(tr['exercise'])}</p><p><b>怎样算通过：</b>{e(tr['pass_criteria'])}</p></details></div>'''
+    import sales_diagnosis
+    nodes = sales_diagnosis.detail(case, api)
+    return f'''<div class="analysis-node two-layer"><h3>两层结论：{e(PRIMARY[layers['primary']])}</h3>{nodes}{''.join(rows)}<p class="muted">{e(layers['causal_limit'])}</p><details class="library-mapping"><summary>对应培训与原话术 · {len(sources)}处</summary>{''.join(sources) or '<p>缺证或本案不适用，未强行指定背诵段落。</p>'}</details><details><summary>本案训练：{e(TRAINING[tr['kind']])} · 待执行</summary><p><b>练什么：</b>{e(tr['action'])}</p><p><b>怎么练：</b>{e(tr['exercise'])}</p><p><b>怎样算通过：</b>{e(tr['pass_criteria'])}</p></details></div>'''
 
 
 def observation(data, source):

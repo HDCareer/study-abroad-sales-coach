@@ -4,6 +4,8 @@
 
 主管新版在本合同上增加[management扩展](chat-review-management.md#管理数据扩展)，由相同生成器输出简明首页、阶段证据点击、试听时效与必须跟回名单。旧版无扩展的输入仍兼容。下文“不计算均单”等说明只描述旧版；管理版金额完整时按扩展中的订单口径计算。
 
+新批次同时交付[统一管理结果](review-results.md)：由本输入一并生成HTML与JSON，等级、统计、预警和必须跟回顺序保持一致，JSON不再作第二次分析。`validity.price_silence`按[有效性规则](validity-assessment.md#逐项判断与结论)记录附加状态；优质有效优先，报价消失不改变有效等级。
+
 ## 用法与边界
 
 生成器为 scripts/render_chat_review.py，样式为 assets/chat-review.css，均相对 Skill 根目录。仅依赖 Python 标准库；CSS 会内嵌到最终 HTML，成品不需要联网或另带样式文件。不安装服务、不上传、不自动联系客户。
@@ -64,7 +66,7 @@ Excel/CSV已有独立导入结果时，两步均须加 --source <私有目录/ca
 {"id":"C01-m01","source":"聊天导出.xlsx","sheet":"Sheet1","row":2,"time":"2026-10-19 10:00","speaker":"客户","text":"此处为原始完整消息","sensitive":false}
 ~~~
 
-sensitive 可省略，其他必填。截图无工作表时 sheet:""；无行号时 row:null，source 写截图文件名及可定位页/区域。行号沿用原文件，不按排序后的消息重编号。text 可以保留原始空字符串，但不能作为判断引用。id 全批唯一、建议案例前缀；所有 refs 只能引用**本案**消息，不能引用另一客户同名消息。相同 source+sheet+row 不能归入多个消息；先消除重复或处理转接归属。
+sensitive 可省略，其他必填。有效性扩展中的失联判断需保留可核查的`source_role`，必要时带独立源中的布尔`is_system_greeting`；不能自行把客户消息改成系统提示，使用`--source`会核对该标记。截图无工作表时 sheet:""；无行号时 row:null，source 写截图文件名及可定位页/区域。行号沿用原文件，不按排序后的消息重编号。若标准化数据来自非表格来源，可同时在报告与独立源消息中提供相同的`source_message_id`；无行号时以该来源ID定位，且检查同案原文、时间、角色及ID，不能杜撰平台ID或当作已接入平台。text 可以保留原始空字符串，但不能作为判断引用。id 全批唯一、建议案例前缀；所有 refs 只能引用**本案**消息，不能引用另一客户同名消息。相同 source+sheet+row 或同来源消息ID不能重复归属；先消除重复或处理转接归属。
 
 排除项仅需本节字段及原始消息，不需要假填阶段与成交。纳入项还需要以下全部字段。
 
@@ -75,6 +77,7 @@ validity:{status,reason,refs}：
 - status 为 high 优质有效、effective 基础有效、pending 待判定、scope_unknown 范围待核、invalid 无效。
 - reason 写符合哪些条件/缺什么证据；refs 至少一条本案消息。
 - 无效不等于排除：真实无效线索仍在会话总数里；内部同事等才按归属排除。
+- 新批次的`assessment`按[有效性逐项判断与更新](validity-assessment.md#机器可读结果可与管理报告共同使用)填写，逐项给可见证据、数据缺口、时点及必要的状态变化；`assessment.status`须与当前`status`一致。报告生成器发现该字段时自动检验，不含字段的历史数据保持兼容。`management.week.validity`仍保留统计期结束时的判断，不可用后来证据倒填。
 
 order:{formal,first_lesson,summary,refs,actual_receipts,quotes}：
 

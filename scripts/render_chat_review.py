@@ -101,7 +101,7 @@ def validate(data):
         string(item, f"standards[{i}]")
     cases = field(data, "cases", "报告")
     require(isinstance(cases, list) and cases, "cases", "需要至少一个案例")
-    case_ids, message_owners, locators = set(), {}, set()
+    case_ids, message_owners, locators, source_message_ids = set(), {}, set(), set()
     for i, case in enumerate(cases):
         p = f"cases[{i}]"
         obj(case, p)
@@ -134,12 +134,19 @@ def validate(data):
                 empty_messages.add(mid)
             row = field(message, "row", mp)
             require(row is None or (type(row) is int and row > 0), mp + ".row", "应为正整数原始行号，无行号截图使用 null")
+            if "source_message_id" in message:
+                source_id = string(message["source_message_id"], mp + ".source_message_id")
+                source_loc = (message["source"], source_id)
+                require(source_loc not in source_message_ids, mp + ".source_message_id", "同一来源消息编号重复归属")
+                source_message_ids.add(source_loc)
             if row is not None:
                 loc = (message["source"], message["sheet"], row)
                 require(loc not in locators, mp + ".row", "同一源文件/工作表/行号已重复归属，先处理归属再渲染")
                 locators.add(loc)
             if "sensitive" in message:
                 require(type(message["sensitive"]) is bool, mp + ".sensitive", "必须为 true/false")
+            if "is_system_greeting" in message:
+                require(type(message["is_system_greeting"]) is bool, mp + ".is_system_greeting", "必须为 true/false")
             if message.get("sensitive"):
                 sensitive.add(mid)
 
@@ -159,6 +166,15 @@ def validate(data):
         choice(field(validity, "status", p + ".validity"), VALIDITY, p + ".validity.status")
         string(field(validity, "reason", p + ".validity"), p + ".validity.reason")
         refs(field(validity, "refs", p + ".validity"), p + ".validity.refs")
+        if "price_silence" in validity:
+            import validity_evidence
+            validity_evidence.validate_price_silence(validity, messages, period["cutoff"], sys.modules[__name__])
+        if "assessment" in validity:
+            import validity_evidence
+            validity_evidence.validate(validity["assessment"], messages, validity["status"], period["cutoff"], sys.modules[__name__])
+            identity = validity["assessment"]["identity"]
+            if identity["account_id"] is not None:
+                require(identity["account_id"] == sid, p + ".validity.assessment.identity", "有效性身份账号与报告归属不一致")
         order = obj(field(case, "order", p), p + ".order")
         choice(field(order, "formal", p + ".order"), FORMAL, p + ".order.formal")
         choice(field(order, "first_lesson", p + ".order"), FIRST, p + ".order.first_lesson")
@@ -269,19 +285,38 @@ def verify_source(data, source):
         raw = by_id[case["id"]]
         if raw.get("account_id") is not None:
             require(raw["account_id"] == case["sales_id"], p, "销售账号与原始提取归属不一致")
+        assessment = case.get("validity", {}).get("assessment")
+        if assessment and assessment["identity"]["basis"] == "source_id":
+            identity = assessment["identity"]
+            require(raw.get("account_id") == identity["account_id"] and raw.get("user_id") == identity["customer_id"],
+                    p + ".validity.assessment.identity", "有效性身份与独立源的账号/客户ID不一致或缺失")
         raw_messages = field(raw, "messages", p)
         require(isinstance(raw_messages, list), p + ".messages", "应为消息数组")
-        indexed = {}
+        indexed, indexed_by_id = {}, {}
         for message in raw_messages:
             obj(message, p + ".messages")
             loc = (message.get("source_sheet", message.get("sheet", "")),
                    message.get("source_row", message.get("row")))
-            require(loc not in indexed, p, "原始提取的工作表/行号重复，无法唯一核对")
-            indexed[loc] = message
+            source_id = message.get("source_message_id")
+            if source_id is not None:
+                string(source_id, p + ".source_message_id")
+                require(source_id not in indexed_by_id, p, "原始来源消息编号重复，无法唯一核对")
+                indexed_by_id[source_id] = message
+            if loc[1] is not None or source_id is None:
+                require(loc not in indexed, p, "原始提取的工作表/行号重复，无法唯一核对")
+                indexed[loc] = message
         for message in case["source_messages"]:
             loc = (message["sheet"], message["row"])
-            require(loc in indexed, p + "." + message["id"], "原始提取中没有同案、同工作表、同行号")
-            original = indexed[loc]
+            source_id = message.get("source_message_id")
+            if source_id is not None:
+                require(source_id in indexed_by_id, p + "." + message["id"], "原始提取中没有同案来源消息编号")
+                original = indexed_by_id[source_id]
+                if message["row"] is not None:
+                    original_loc = (original.get("source_sheet", original.get("sheet", "")), original.get("source_row", original.get("row")))
+                    require(loc == original_loc, p + "." + message["id"], "来源消息编号与原始工作表/行号不一致")
+            else:
+                require(loc in indexed, p + "." + message["id"], "原始提取中没有同案、同工作表、同行号")
+                original = indexed[loc]
             for key in ("text", "time"):
                 require(message[key] == original.get(key), p + "." + message["id"] + "." + key,
                         "与独立源文件不一致；不能改写原话或时间后仍称逐字引用")
@@ -289,6 +324,9 @@ def verify_source(data, source):
             require(original_role is not None, p + "." + message["id"], "独立源缺少 role/speaker")
             require(message.get("source_role", message["speaker"]) == original_role,
                     p + "." + message["id"] + ".speaker", "说话角色与独立源不一致；显示名不同可显式提供 source_role")
+            if "is_system_greeting" in message:
+                require(message["is_system_greeting"] == original.get("is_system_greeting"),
+                        p + "." + message["id"] + ".is_system_greeting", "系统提示标记与独立源不一致或缺失")
             checked += 1
     return checked
 
@@ -304,6 +342,13 @@ def private_output(path):
 
 def e(value):
     return html.escape(str(value), quote=True)
+
+
+def validity_label(validity):
+    label = VALIDITY[validity['status']]
+    if validity['status'] in ('high', 'effective') and validity.get('price_silence', {}).get('state') == 'yes':
+        label += '—报价消失'
+    return label
 
 
 def lines(value):
@@ -326,6 +371,8 @@ def quote(case, mid, compact=False):
     location = m["source"] + (" / " + m["sheet"] if m["sheet"] else "")
     if m["row"] is not None:
         location += " · 第" + str(m["row"]) + "行"
+    if m.get("source_message_id"):
+        location += " · 来源消息ID " + m["source_message_id"]
     body = "［无关敏感内容已隐藏］" if m.get("sensitive") else m["text"]
     cls = "quote compact" if compact else "quote"
     return f'<div class="{cls}"><div class="quote-meta"><b>{e(m["speaker"])}</b><span>{e(m["time"])}</span></div><blockquote>{lines(body)}</blockquote><small>{e(location)} · {e(mid)}</small></div>'
@@ -384,7 +431,7 @@ def detail(case):
 <p><b>主要问题阶段：</b>{e(stage_label(p['main_stage']))}。{lines(p['reason'])}</p><p class="muted">业务场景：{lines(p['scene']) or '未单列'}</p><p class="main-problem"><b>真正卡住的地方：</b>{lines(case['current_problem'])}</p><p><b>归因与精力安排：</b>{lines(case['attribution'])}</p>
 <div class="nature-grid">{nature}</div><p><b>三性之外的实际约束：</b>{lines(case['other_constraints']) or '当前未发现已证实的额外约束。'}</p>
 {''.join(nodes)}<section class="opportunity"><h3>为什么值得争取，离成交还差什么</h3><p>{lines(case['opportunity'])}</p></section><section class="recovery"><h3>接下来还能不能争取</h3><p><b>{e(POSSIBILITY[r['possibility']])}：</b>{lines(r['reason'])}</p><ol>{actions}</ol>{script}<div class="coaching"><h3>与销售一起复盘时问</h3><p>{lines(r['coaching_question'])}</p><p><b>下一次看到什么，才算向成交推进：</b>{lines(r['next_signal'])}</p></div></section>
-<details><summary>有效性、阶段和订单的原话依据</summary><p><b>{e(VALIDITY[case['validity']['status']])}：</b>{lines(case['validity']['reason'])}</p><p>有效性依据：{e('、'.join(case['validity']['refs']))}；订单依据：{e('、'.join(order['refs']))}</p>{references}</details><a class="back" href="#overview">回谈单总表 ↑</a></article>'''
+<details><summary>有效性、阶段和订单的原话依据</summary><p><b>{e(validity_label(case['validity']))}：</b>{lines(case['validity']['reason'])}</p><p>有效性依据：{e('、'.join(case['validity']['refs']))}；订单依据：{e('、'.join(order['refs']))}</p>{references}</details><a class="back" href="#overview">回谈单总表 ↑</a></article>'''
 
 
 SCRIPT = r'''(() => {
@@ -418,7 +465,7 @@ def render(data, css):
     for case in cases:
         p, order = case["position"], case["order"]
         nature = "、".join(n["name"] for n in case["nature"] if n["state"] == "gap") or "未证实三性缺口"
-        rows.append(f'<tr data-review-row data-group="{e(case["group"])}" data-stage="{e(p["main_stage"] or "unknown")}" data-search="{e(case["id"] + " " + case["name"])}"><td>{e(case["date"])}</td><td><a href="#{e(case["id"])}"><b>{e(case["name"])}</b></a><small>{e(case["id"])} · {e(VALIDITY[case["validity"]["status"]])}</small><span class="tag {e(case["group"])}">{e(GROUPS[case["group"]])}</span></td><td class="outcome"><b>{e(FORMAL[order["formal"]])}</b><small>{e(FIRST[order["first_lesson"]])}</small><p>{lines(order["summary"])}</p></td>' + ''.join(phase_cell(case["phases"][key]) for key in STAGES) + f'<td><b>{e(stage_label(p["main_stage"]))}</b><small>{e(nature)}</small></td><td>{lines(case["current_problem"])}</td><td class="comparison">' + ''.join(quote(case, mid, True) for mid in case["summary_refs"]) + f'<a href="#{e(case["id"])}">看原因、补救与话术 →</a></td></tr>')
+        rows.append(f'<tr data-review-row data-group="{e(case["group"])}" data-stage="{e(p["main_stage"] or "unknown")}" data-search="{e(case["id"] + " " + case["name"])}"><td>{e(case["date"])}</td><td><a href="#{e(case["id"])}"><b>{e(case["name"])}</b></a><small>{e(case["id"])} · {e(validity_label(case["validity"]))}</small><span class="tag {e(case["group"])}">{e(GROUPS[case["group"]])}</span></td><td class="outcome"><b>{e(FORMAL[order["formal"]])}</b><small>{e(FIRST[order["first_lesson"]])}</small><p>{lines(order["summary"])}</p></td>' + ''.join(phase_cell(case["phases"][key]) for key in STAGES) + f'<td><b>{e(stage_label(p["main_stage"]))}</b><small>{e(nature)}</small></td><td>{lines(case["current_problem"])}</td><td class="comparison">' + ''.join(quote(case, mid, True) for mid in case["summary_refs"]) + f'<a href="#{e(case["id"])}">看原因、补救与话术 →</a></td></tr>')
     validity_text = "；".join(f'{VALIDITY[key]} {counts["validity"].get(key, 0)}' for key in VALIDITY)
     valid = [c for c in cases if c["validity"]["status"] in ("high", "effective")]
     pending = any(c["validity"]["status"] in ("pending", "scope_unknown") for c in cases)
@@ -445,6 +492,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="校验并生成单销售离线复盘，不自动作业务判断")
     parser.add_argument("input", type=Path, help="符合 chat-review-data.md 的 JSON")
     parser.add_argument("--output", type=Path, help="HTML 路径，生成时必填")
+    parser.add_argument("--results-output", type=Path, help="从同一分析生成统一管理结果JSON；不接入平台")
     parser.add_argument("--check-only", action="store_true", help="只校验，不写入")
     parser.add_argument("--source", type=Path, help="独立导入器 cases.json，用于逐字核对消息与角色")
     parser.add_argument("--overwrite", action="store_true", help="已获明确覆盖授权时才使用")
@@ -463,6 +511,10 @@ def main(argv=None):
             source_checked = verify_source(data, source)
             if management:
                 management.validate(data, sys.modules[__name__], source)
+        handoff = None
+        if args.results_output:
+            import review_results
+            handoff = review_results.build(data, sys.modules[__name__], source_checked)
         if args.check_only:
             print(json.dumps({"valid": True, "sales": data["sales"]["name"], "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
             return 0
@@ -471,12 +523,26 @@ def main(argv=None):
         require(args.input.resolve() != args.output.resolve(), "--output", "不能覆盖输入数据")
         private_output(args.output)
         require(not args.output.exists() or args.overwrite, "--output", "文件已存在；默认不覆盖，已有授权才可加 --overwrite")
+        if args.results_output:
+            require(args.results_output.suffix.lower() == '.json', '--results-output', '扩展名须为.json')
+            require(args.results_output.resolve() not in (args.input.resolve(), args.output.resolve()), '--results-output', '不能覆盖输入或报告')
+            require(args.source is None or args.results_output.resolve() != args.source.resolve(), '--results-output', '不能覆盖独立导入源')
+            private_output(args.results_output)
+            require(not args.results_output.exists() or args.overwrite, '--results-output', '结果文件已存在，默认不覆盖')
         css = (Path(__file__).resolve().parent.parent / "assets" / "chat-review.css").read_text(encoding="utf-8")
         result = management.render(data, sys.modules[__name__]) if management else render(data, css)
+        if handoff is not None:
+            result = review_results.stamp_report(result, handoff['analysis_id'])
+            results_text = json.dumps(handoff, ensure_ascii=False, indent=2)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w" if args.overwrite else "x", encoding="utf-8", newline="\n") as handle:
             handle.write(result)
-        print(json.dumps({"valid": True, "output": str(args.output), "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
+        if handoff is not None:
+            args.results_output.parent.mkdir(parents=True, exist_ok=True)
+            with args.results_output.open('w' if args.overwrite else 'x', encoding='utf-8', newline='\n') as handle:
+                handle.write(results_text)
+        print(json.dumps({"valid": True, "output": str(args.output), "results_output": str(args.results_output) if args.results_output else None,
+                          "analysis_id": handoff['analysis_id'] if handoff else None, "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
         return 0
     except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as exc:
         print("无法生成复盘：" + str(exc), file=sys.stderr)
