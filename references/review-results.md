@@ -26,6 +26,8 @@ python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> 
 | must_follow_case_ids | 与报告末尾相同顺序的必须跟回案例编号 |
 | cases | 每案结果，排除项保留原因，不混入纳入数 |
 | longitudinal | 可选跨周机会定义和实际培训事件；没有时为null |
+| cadence、daily | daily/weekly/period；Daily保留基线截止、优先/其他需关注、新进展、全部动作与派生状态。历史输入缺cadence按weekly兼容 |
+| quality_and_cohorts | 同批成熟期、未纳入原因、按来源分开的人工复核汇总及逐项登记；无真实复核不报准确率 |
 
 每个纳入案例包括以下字段：
 
@@ -34,6 +36,7 @@ python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> 
 - `week`保留截至统计期末的有效性与阶段；`current_phases`、`position`和`issue`保留最新五列、最远进展、当前阶段与主要卡点。不能用更新后的状态重写周末。
 - `layers`逐案区分判断、表达、执行、对应培训与训练；旧记录无两层数据为null，不冒充未见缺口。
 - `tracking`为可选的稳定需求ID与观察事件，按[跨周规则](longitudinal-review.md)填写；旧数据缺失为null，不猜补。
+- `actions`、`daily_signals`、`cohort`按[Daily规则](daily-management.md)保留实际状态与来源，缺失不猜补。Daily仍保留week和metrics.week_*兼容名称，实际表示声明的本日统计期；日新增与当天购买不能直接相除。
 - `trial`、`formal`、`order`分别保留已知付款、完课、正式购买、订单实收与报价。`trial_warning`复用报告预警函数，不另起计时。
 - `must_follow`、`recovery`保留依据、优先级、责任动作、时点、补救草稿及适用条件。已正式购买或不宜触达不混入首次追单。
 - `report_anchor`为当前管理HTML中对应case位置。`evidence`只收录上述结果实际引用的本案非敏感原话，保留消息ID、来源、时间、说话人、工作表行号或来源消息ID；不复制全量聊天。它仍属于客户资料，遵守同一授权和保留规则。
@@ -45,3 +48,5 @@ python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> 
 具体执行[销售申诉与人工复核规则](appeals-and-review.md)：复核记录单独存本批私有目录，相关待核/更正说明同步写入分析现有的理由与限制字段，再统一生成。当前生成器不认证复核权限、不自动办理申诉，也不将AI草稿标成人工确认；标准变更须有具体确认依据及生效范围。
 
 本次只固定Skill的本地输出。数据部门如何传入原始记录、接收JSON、打开后台证据位置或回写标签，仍由数据部门实现。
+
+Daily可传`--previous-results <上期统一结果.json>`，HTML与JSON采用同一基线，analysis_id同时包含基线编号。输入前核对该历史资料仍在授权保留期内；结果JSON含引用证据，不是可以无限保存的匿名汇总。上期完整结果是日常对照输入，长期结构化趋势使用已有快照流程。人工复核和新动作须回到专业分析统一登记后重生成，不能手改交付JSON制造完成状态。

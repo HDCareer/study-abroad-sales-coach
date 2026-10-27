@@ -171,6 +171,9 @@ def validate(data, api, source=None):
         coaching_review.validate(data, api)
     import longitudinal_review
     longitudinal_review.validate_input(data, api)
+    import daily_management, quality_and_cohorts
+    daily_management.validate(data, api)
+    quality_and_cohorts.validate(data, api)
     return data
 
 
@@ -243,6 +246,7 @@ function fromHash(){const id=window.location.hash.slice(1);if(id.startsWith('cas
 
 
 def render(data, api):
+    report_title = {'daily':'销售日复盘','period':'销售复盘'}.get(data['management'].get('cadence'),'销售周复盘')
     e = api.e
     s = metrics(data)
     m = data['management']
@@ -256,8 +260,8 @@ def render(data, api):
     def case_list(cases):
         return '<div class="case-links">' + ''.join(case_button(c) for c in cases) + '</div>'
     metrics_html = ''.join(f'<div class="metric"><small>{e(label)}</small><b>{e(value)}</b></div>' for label, value in [
-        ('上周纳入会话', len(s['week'])), ('确定有效', len(s['valid'])), ('上周确认首课付款', len(s['trial_paid'])),
-        ('上周确认正式购买', len(s['formal']) if len(s['formal']) or data['scope']['orders_complete'] else '待核'),
+        ('本期纳入会话', len(s['week'])), ('确定有效', len(s['valid'])), ('本期确认首课付款', len(s['trial_paid'])),
+        ('本期确认正式购买', len(s['formal']) if len(s['formal']) or data['scope']['orders_complete'] else '待核'),
         ('正式订单均单实收', '¥' + format(s['mean'], ',.0f') if s['mean'] is not None else '待核')])
     summary_html, reason_html = [], []
     for i, finding in enumerate(m['summary']):
@@ -276,7 +280,7 @@ def render(data, api):
         pending = [c for c in flow_cases if phase(c)['state'] not in ('done', 'gap') and phase(c).get('applicable') is not False]
         width = 100 * len(done) / max(1, len(flow_cases))
         valid_done = sum(c['id'] in valid_ids for c in done)
-        flow.append(f'<div class="flow-row"><span>{e(label)}</span><div class="track" role="img" aria-label="{e(label)}已完成{len(done)}位，基于上周{len(flow_cases)}位客户"><div class="bar" style="width:{width:.3f}%"></div></div><button type="button" class="flow-value" data-reason="done-{key}">{len(done)}位完成 →</button></div>')
+        flow.append(f'<div class="flow-row"><span>{e(label)}</span><div class="track" role="img" aria-label="{e(label)}已完成{len(done)}位，基于本期{len(flow_cases)}位客户"><div class="bar" style="width:{width:.3f}%"></div></div><button type="button" class="flow-value" data-reason="done-{key}">{len(done)}位完成 →</button></div>')
         reason_html.append(f'<details class="reason-box" id="done-{key}" hidden><summary>{e(label)} · {len(done)}位完成（含不足）</summary>{case_list(done) or "<p>无可确认完成案例。</p>"}</details>')
         detail_note = '；'.join(text for count, text in [(weak, f'其中{weak}位完成但不足'), (len(unknown), f'{len(unknown)}位待核'), (len(skipped), f'{len(skipped)}位无需经过')] if count)
         flow.append(f'<div class="muted gap-link">完成者中确定有效{valid_done}位' + ('；' + e(detail_note) if detail_note else '') + '</div>')
@@ -298,7 +302,7 @@ def render(data, api):
                 kind = {'gap': '推进缺口', 'in_progress': '正常在途', 'constraint': '现实约束', 'unknown': '证据不足', 'none': '未发现明确缺口'}[issue['kind']]
                 groups[kind + ' · ' + issue['label']].append(c)
             body = ''.join(f'<h3>{e(reason)} · {len(cases)}位</h3>{case_list(cases)}' for reason, cases in groups.items())
-            reason_html.append(f'<details class="reason-box" id="stage-{key}" hidden><summary>前序 → {e(label)}未推进 · {len(transition)}位</summary><p class="muted">上周阶段人数；原因与补救采用资料截止时点的最新记录，可能起于更早环节。缺证和在途不算已流失。</p>{body}</details>')
+            reason_html.append(f'<details class="reason-box" id="stage-{key}" hidden><summary>前序 → {e(label)}未推进 · {len(transition)}位</summary><p class="muted">本期阶段人数；原因与补救采用资料截止时点的最新记录，可能起于更早环节。缺证和在途不算已流失。</p>{body}</details>')
     close_branches = Counter(c['management']['week']['phases']['close']['branch'] for c in flow_cases if c['management']['week']['phases']['close']['state'] in ('done', 'gap'))
     flow.append('<p class="muted">Close支线：' + '；'.join(e(api.BRANCH[k] or '范围未分') + f' {v}位' for k, v in close_branches.items()) + '。首课Close不等于正式购买。</p>')
     warnings = []
@@ -343,8 +347,8 @@ def render(data, api):
 <div class="draft">{e(c['recovery']['script']) or '本案不生成推销稿；按上述内部动作处理。'}</div><p class="muted">使用前提：{e(c['recovery']['script_conditions'])}</p>
 <details><summary>更多依据：有效性、五环节、付款与完课</summary><p>{e(c['validity']['reason'])}</p>{phase_html}<p>{e(c['order']['summary'])}</p>{morequotes}</details>
 <p><b>面谈重点：</b>{e(c['recovery']['coaching_question'])}</p></article>''')
-    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本周" if c["management"]["week"]["included"] else "仅截止后更新"}</td></tr>' for c in all_cases)
-    caution = f'上周确认新增{ s["new_confirmed"] }位，新增归属待核{ s["new_unknown"] }位；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}位，其中{s["undated_formal"]}位确认日期不明；另有{s["undated_trial"]}位首课付款日期不明，均未强填本周收款。'
+    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本期" if c["management"]["week"]["included"] else "仅截止后更新"}</td></tr>' for c in all_cases)
+    caution = f'本期确认新增{ s["new_confirmed"] }位，新增归属待核{ s["new_unknown"] }位；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}位，其中{s["undated_formal"]}位确认日期不明；另有{s["undated_trial"]}位首课付款日期不明，均未强填本期收款。'
     known_receipts = f'已能确认金额的正式订单人民币到账合计：¥{s["known_total"]:,.2f}，不代表全部实际收入。' if s['known_total'] else '正式订单实收金额未能从记录中核清，不记为零收入。'
     exclusions = ''.join(f'<li>{e(c["id"])} · {e(c["name"])}：{e(c["exclusion_reason"])}</li>' for c in data['cases'] if not c['included'])
     criteria = '<details><summary>有效性与付款判定标准</summary><ul>' + ''.join(f'<li>{e(x)}</li>' for x in data['standards']) + '</ul></details>'
@@ -352,10 +356,10 @@ def render(data, api):
         criteria += '<details><summary>排除项与理由</summary><ul>' + exclusions + '</ul></details>'
     coaching_html = coaching.overview(data, api) if coaching else ''
     correction = '<p class="reason"><b>校正数据版</b> · 本报告仅依据最新上传文件，替代此前混入其他聊天的报告；旧批不计入历史趋势。</p>' if coaching and m['coaching']['basis'] == 'corrected_baseline' else ''
-    html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>{e(data['sales']['name'])} · 销售周复盘</title><style>{CSS}</style></head><body><main id="review-root">
-<header><h1>{e(data['sales']['name'])} · 销售周复盘</h1><p class="muted">统计：{e(m['week_start'])} — {e(m['week_end'])}<br>最新状态截至：{e(m['cutoff'])} · {e(m['time_basis'])}</p>{correction}</header>
-<section class="panel"><div class="metrics">{metrics_html}</div><p class="muted">仅统计有证据且时间落在上周的付款；未知金额不填0，首课不混入正式均单。</p>{''.join(summary_html)}<p><a href="#must-follow">必须跟回 {len(s['must_follow'])}位 · 查看末尾名单 →</a></p><details><summary>统计范围与证据边界</summary><p>{e(caution)}</p><p>{e(data['scope']['coverage'])}</p><p>客户未见实际上课记录，不计入已完成试听，注明记录中未见；中途中断另作说明。预约到期不等于上过课。首课付款为已付人数，后续中断或退款见个案，不代表净留存订单。</p><p>{e(known_receipts)}</p>{criteria}</details></section>
-<section class="panel"><h2>销售主线 · 五环节完成情况</h2><p class="muted">覆盖上周全部{len(flow_cases)}位纳入客户，其中确定有效{len(valid)}位。每列独立计数，不相加；无需异议可直接进入Close。缺证与正常在途不算流失。</p>{''.join(flow)}{''.join(reason_html)}</section>
+    html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>{e(data['sales']['name'])} · {e(report_title)}</title><style>{CSS}</style></head><body><main id="review-root">
+<header><h1>{e(data['sales']['name'])} · {e(report_title)}</h1><p class="muted">统计：{e(m['week_start'])} — {e(m['week_end'])}<br>最新状态截至：{e(m['cutoff'])} · {e(m['time_basis'])}</p>{correction}</header>
+<section class="panel"><div class="metrics">{metrics_html}</div><p class="muted">仅统计有证据且时间落在本期的付款；未知金额不填0，首课不混入正式均单。</p>{''.join(summary_html)}<p><a href="#must-follow">必须跟回 {len(s['must_follow'])}位 · 查看末尾名单 →</a></p><details><summary>统计范围与证据边界</summary><p>{e(caution)}</p><p>{e(data['scope']['coverage'])}</p><p>客户未见实际上课记录，不计入已完成试听，注明记录中未见；中途中断另作说明。预约到期不等于上过课。首课付款为已付人数，后续中断或退款见个案，不代表净留存订单。</p><p>{e(known_receipts)}</p>{criteria}</details></section>
+<section class="panel"><h2>销售主线 · 五环节完成情况</h2><p class="muted">覆盖本期全部{len(flow_cases)}位纳入客户，其中确定有效{len(valid)}位。每列独立计数，不相加；无需异议可直接进入Close。缺证与正常在途不算流失。</p>{''.join(flow)}{''.join(reason_html)}</section>
 <section class="panel"><h2>试听后转正预警</h2><p class="muted">截至最新资料；从已确认实际完课计算。区间只按可证明的最低超时分档，分档依据本机构已确认阈值，不把高风险当自动放弃条件。</p>{''.join(warnings) or '<p>本批没有可确认已完课且仍需转正的案例。</p>'}</section>
 {coaching_html}
 <section class="panel" id="evidence-panel" hidden aria-live="polite"><button type="button" id="hide-evidence">收起个案</button>{''.join(details)}</section>

@@ -10,7 +10,7 @@ body:
     id: environment
     attributes:
       label: 平台、模型和Skill版本
-      placeholder: Gemini / 模型不详 / 0.7.30-public.1
+      placeholder: Gemini / 模型不详 / 0.7.31-public.1
     validations:
       required: true
   - type: dropdown

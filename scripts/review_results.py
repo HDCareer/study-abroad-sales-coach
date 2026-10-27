@@ -8,14 +8,15 @@ import re
 VERSION = 'skill3-management-results/1.0'
 
 
-def build(data, api, source_checked=None):
+def build(data, api, source_checked=None, previous_results=None):
     import management_review as management
     api.require('management' in data, 'results', '统一管理结果需要management数据')
     api.require(data['period']['cutoff'] == data['management']['cutoff'], 'results', '报告与管理结果须采用同一资料截止时间')
     skill_text = (Path(__file__).resolve().parents[1] / 'SKILL.md').read_text(encoding='utf-8-sig')
     version = re.search(r'^版本：([^。\s]+)', skill_text, re.MULTILINE)
     api.require(version is not None, 'results', '无法取得Skill运行版本')
-    digest_input = {'skill_version': version.group(1), 'analysis': data}
+    digest_input = {'skill_version': version.group(1), 'analysis': data,
+                    'previous_analysis_id': previous_results.get('analysis_id') if previous_results else None}
     digest = hashlib.sha256(json.dumps(digest_input, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
     m = management.metrics(data)
     def snapshot(validity):
@@ -40,6 +41,8 @@ def build(data, api, source_checked=None):
                       position=copy.deepcopy(c['position']), issue=copy.deepcopy(cm['issue']),
                       layers=copy.deepcopy(cm.get('layers')), trial=copy.deepcopy(cm['trial']),
                       tracking=copy.deepcopy(cm.get('tracking')),
+                      actions=copy.deepcopy(cm.get('actions',[])), daily_signals=copy.deepcopy(cm.get('daily_signals',[])),
+                      cohort=copy.deepcopy(cm.get('cohort')),
                       formal=copy.deepcopy(cm['formal']), order=copy.deepcopy(c['order']),
                       trial_warning=management.warning(c, data['management']['cutoff'], data['management'].get('alert_thresholds_hours')),
                       must_follow=copy.deepcopy(cm['must_follow']), recovery=copy.deepcopy(c['recovery']),
@@ -55,10 +58,15 @@ def build(data, api, source_checked=None):
             elif isinstance(value, str) and value in own:
                 used.add(value)
         collect(result)
+        collect([r for r in data['management'].get('evaluation',{}).get('reviews',[]) if r['case_id']==c['id']])
         result['evidence'] = [copy.deepcopy(msg) for msg in c['source_messages'] if msg['id'] in used and not msg.get('sensitive')]
         records.append(result)
     mean = str(m['mean']) if m['mean'] is not None else None
+    import daily_management, quality_and_cohorts
+    daily_view = daily_management.build(data, api, previous_results) if data['management'].get('cadence') == 'daily' else None
+    quality = quality_and_cohorts.build(data)
     return {'schema_version': VERSION, 'analysis_id': digest, 'sales': copy.deepcopy(data['sales']),
+            'cadence': data['management'].get('cadence','weekly'), 'daily': daily_view, 'quality_and_cohorts':quality,
             'skill_version': version.group(1),
             'period': copy.deepcopy(data['period']), 'scope': copy.deepcopy(data['scope']),
             'reporting_window': {key: data['management'][key] for key in ('week_start', 'week_end', 'cutoff', 'time_basis')},

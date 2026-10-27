@@ -1,4 +1,4 @@
 interface:
   display_name: "留学辅导销售助手"
-  short_description: "逐客带单或整批聊天复盘，定位谈单阶段、订单机会与补救话术，多销售分别输出"
-  default_prompt: "使用 $study-abroad-sales-coach：已有单客材料就带单，整批聊天就按销售分别复盘，没有材料则从内置虚构起点开始体验。"
+  short_description: "逐客带单与按销售分别复盘，Daily看变化、到期和动作，展开原话与两层带教"
+  default_prompt: "使用 $study-abroad-sales-coach：已有单客材料就带单，整批聊天按销售分别复盘，连续管理默认Daily；没有材料则从内置虚构起点开始体验。"

@@ -8,6 +8,8 @@
 
 ## 用法与边界
 
+持续使用的新增批次默认按[Daily管理扩展](daily-management.md)明确cadence=daily，并提供覆盖说明和实际动作状态；用户指定周报/期间时遵从。旧week字段在Daily表示本日快照，旧输入省略cadence仍按周兼容。首次没有历史不造变化趋势；实际人工复核、成熟期与上期对照参数也见该页。
+
 生成器为 scripts/render_chat_review.py，样式为 assets/chat-review.css，均相对 Skill 根目录。仅依赖 Python 标准库；CSS 会内嵌到最终 HTML，成品不需要联网或另带样式文件。不安装服务、不上传、不自动联系客户。
 
 ~~~text

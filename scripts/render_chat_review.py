@@ -493,6 +493,7 @@ def main(argv=None):
     parser.add_argument("input", type=Path, help="符合 chat-review-data.md 的 JSON")
     parser.add_argument("--output", type=Path, help="HTML 路径，生成时必填")
     parser.add_argument("--results-output", type=Path, help="从同一分析生成统一管理结果JSON；不接入平台")
+    parser.add_argument("--previous-results", type=Path, help="Daily模式对照的上一份统一结果，保留稳定客户身份")
     parser.add_argument("--check-only", action="store_true", help="只校验，不写入")
     parser.add_argument("--source", type=Path, help="独立导入器 cases.json，用于逐字核对消息与角色")
     parser.add_argument("--overwrite", action="store_true", help="已获明确覆盖授权时才使用")
@@ -511,10 +512,19 @@ def main(argv=None):
             source_checked = verify_source(data, source)
             if management:
                 management.validate(data, sys.modules[__name__], source)
+        previous_results = None
+        daily_view = None
+        if args.previous_results:
+            require(management is not None and data['management'].get('cadence') == 'daily', '--previous-results', '上一结果对照用于Daily模式')
+            previous_results = json.loads(args.previous_results.read_text(encoding='utf-8-sig'))
+            obj(previous_results, '--previous-results')
+        if management and data['management'].get('cadence') == 'daily':
+            import daily_management
+            daily_view = daily_management.build(data, sys.modules[__name__], previous_results)
         handoff = None
         if args.results_output:
             import review_results
-            handoff = review_results.build(data, sys.modules[__name__], source_checked)
+            handoff = review_results.build(data, sys.modules[__name__], source_checked, previous_results)
         if args.check_only:
             print(json.dumps({"valid": True, "sales": data["sales"]["name"], "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
             return 0
@@ -527,10 +537,11 @@ def main(argv=None):
             require(args.results_output.suffix.lower() == '.json', '--results-output', '扩展名须为.json')
             require(args.results_output.resolve() not in (args.input.resolve(), args.output.resolve()), '--results-output', '不能覆盖输入或报告')
             require(args.source is None or args.results_output.resolve() != args.source.resolve(), '--results-output', '不能覆盖独立导入源')
+            require(args.previous_results is None or args.results_output.resolve() != args.previous_results.resolve(), '--results-output', '不能覆盖历史基线')
             private_output(args.results_output)
             require(not args.results_output.exists() or args.overwrite, '--results-output', '结果文件已存在，默认不覆盖')
         css = (Path(__file__).resolve().parent.parent / "assets" / "chat-review.css").read_text(encoding="utf-8")
-        result = management.render(data, sys.modules[__name__]) if management else render(data, css)
+        result = daily_management.render(data, sys.modules[__name__], daily_view) if daily_view is not None else management.render(data, sys.modules[__name__]) if management else render(data, css)
         if handoff is not None:
             result = review_results.stamp_report(result, handoff['analysis_id'])
             results_text = json.dumps(handoff, ensure_ascii=False, indent=2)
