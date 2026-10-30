@@ -70,6 +70,8 @@ def validate(data, api):
             api.obj(item, p + '.opportunities')
             cid = item.get('case_id')
             api.require(cid in cases and cid not in used, p, '机会须来自本销售本批不同案例')
+            import customer_lifecycle
+            api.require(customer_lifecycle.sales_applicable(cases[cid]),p,'非销售/用途待核沟通不能进入咨询能力分母')
             used.add(cid)
             api.choice(item.get('status'), ('gap', 'sound', 'unknown'), p + '.status')
             refs = item.get('refs')

@@ -18,8 +18,8 @@ def validate_input(data, api):
     """Check optional annotations created by the Skill, not their semantic accuracy."""
     cfg = data['management'].get('longitudinal')
     if cfg is None:
-        api.require(not any('tracking' in c.get('management', {}) for c in data['cases']), 'tracking', '个案观察需要同批longitudinal定义')
-        return
+        api.require(not any(c.get('management', {}).get('tracking', {}).get('events') for c in data['cases']), 'tracking', '带教观察事件需要同批longitudinal定义；仅需求编号可独立使用')
+        cfg={'definitions':[], 'training_events':[]}
     api.obj(cfg, 'longitudinal')
     definitions = cfg.get('definitions')
     api.require(isinstance(definitions, list), 'longitudinal.definitions', '需要同类机会定义数组')

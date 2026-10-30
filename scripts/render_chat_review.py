@@ -24,7 +24,7 @@ GROUPS = {"rescue": "重点补救", "trial_followup": "正常首课跟进",
           "order_check": "仅订单核实", "routine": "正常推进",
           "historical": "历史复盘", "low_priority": "暂不逐案详谈", "excluded": "不纳入"}
 VALIDITY = {"high": "优质有效", "effective": "基础有效", "pending": "待判定",
-            "scope_unknown": "范围待核", "invalid": "无效"}
+            "scope_unknown": "范围待核", "invalid": "无效", "not_applicable": "本次不评销售有效性"}
 FORMAL = {"confirmed": "正式成交已确认", "not_confirmed": "截至记录未确认正式成交",
           "unknown": "正式成交待核"}
 FIRST = {"paid": "首课已付费", "completed": "首课已完成", "accepted": "已接受首课，付款待核",
@@ -166,6 +166,8 @@ def validate(data):
         choice(field(validity, "status", p + ".validity"), VALIDITY, p + ".validity.status")
         string(field(validity, "reason", p + ".validity"), p + ".validity.reason")
         refs(field(validity, "refs", p + ".validity"), p + ".validity.refs")
+        if validity['status']=='not_applicable':
+            require(case.get('management',{}).get('lifecycle',{}).get('sales_applicable') is False,p+'.validity','不适用必须有非销售沟通依据')
         if "price_silence" in validity:
             import validity_evidence
             validity_evidence.validate_price_silence(validity, messages, period["cutoff"], sys.modules[__name__])
@@ -336,7 +338,7 @@ def private_output(path):
     skill_root = Path(__file__).resolve().parent.parent
     require(resolved != skill_root and skill_root not in resolved.parents, "--output", "客户复盘不能写进 Skill")
     require(".git" not in resolved.parts, "--output", "客户复盘不能写进 .git")
-    for ancestor in (resolved.parent, *resolved.parent.parents):
+    for ancestor in (resolved, *resolved.parents):
         require(not (ancestor / ".git").exists(), "--output", "客户复盘不能写进 Git 工作区，请指定私有客户目录")
 
 
@@ -356,10 +358,11 @@ def lines(value):
 
 
 def stats(data):
+    import customer_lifecycle
     cases = [c for c in data["cases"] if c["included"]]
     return {"contacts": len(data["cases"]), "included": len(cases), "excluded": len(data["cases"]) - len(cases),
-            "effective": sum(c["validity"]["status"] in ("high", "effective") for c in cases),
-            "validity": dict(Counter(c["validity"]["status"] for c in cases)),
+            "effective": sum(customer_lifecycle.sales_applicable(c) and c["validity"]["status"] in ("high", "effective") for c in cases),
+            "validity": dict(Counter(c["validity"]["status"] for c in cases if customer_lifecycle.sales_applicable(c))),
             "groups": {k: sum(c["group"] == k for c in cases) for k in GROUPS if k != "excluded"},
             "formal_confirmed": sum(c["order"]["formal"] == "confirmed" for c in cases),
             "formal_unknown": sum(c["order"]["formal"] == "unknown" for c in cases),
@@ -494,12 +497,21 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="HTML 路径，生成时必填")
     parser.add_argument("--results-output", type=Path, help="从同一分析生成统一管理结果JSON；不接入平台")
     parser.add_argument("--previous-results", type=Path, help="Daily模式对照的上一份统一结果，保留稳定客户身份")
+    parser.add_argument("--history-results", type=Path, action="append", default=[], help="可重复传入仍获准保留的旧统一结果，续接昨日未出现的客户")
     parser.add_argument("--check-only", action="store_true", help="只校验，不写入")
     parser.add_argument("--source", type=Path, help="独立导入器 cases.json，用于逐字核对消息与角色")
     parser.add_argument("--overwrite", action="store_true", help="已获明确覆盖授权时才使用")
+    parser.add_argument("--delivery-dir", type=Path, help="公司交付：完整报告/结果/运行清单原子呈现于新私有目录")
+    parser.add_argument("--run-record", type=Path, help="数据部门保存的实际模型运行记录；未提供如实标未记录")
     args = parser.parse_args(argv)
     try:
-        data = json.loads(args.input.read_text(encoding="utf-8-sig"))
+        inputs = {}
+        def read_json(path, role):
+            raw = path.read_bytes()
+            inputs[role] = raw
+            return json.loads(raw.decode('utf-8-sig'))
+        data = read_json(args.input, 'analysis')
+        require(not args.delivery_dir or not (args.output or args.results_output or args.overwrite), '--delivery-dir', '完整交付目录与旧输出/覆盖参数不可混用')
         validate(data)
         management = None
         if "management" in data:
@@ -507,30 +519,62 @@ def main(argv=None):
             management.validate(data, sys.modules[__name__])
         counts = stats(data)
         source_checked = None
+        source = None
         if args.source:
-            source = json.loads(args.source.read_text(encoding="utf-8-sig"))
+            source = read_json(args.source, 'source')
             source_checked = verify_source(data, source)
             if management:
                 management.validate(data, sys.modules[__name__], source)
         previous_results = None
+        history_results = []
         daily_view = None
+        for path in args.history_results:
+            require(management is not None and data['management'].get('cadence') == 'daily', '--history-results', '历史续接用于Daily模式')
+            item=read_json(path, 'history:'+str(len(history_results)));obj(item,'--history-results');history_results.append(item)
         if args.previous_results:
             require(management is not None and data['management'].get('cadence') == 'daily', '--previous-results', '上一结果对照用于Daily模式')
-            previous_results = json.loads(args.previous_results.read_text(encoding='utf-8-sig'))
+            previous_results = read_json(args.previous_results, 'previous')
             obj(previous_results, '--previous-results')
         if management and data['management'].get('cadence') == 'daily':
             import daily_management
-            daily_view = daily_management.build(data, sys.modules[__name__], previous_results)
+            daily_view = daily_management.build(data, sys.modules[__name__], previous_results, history_results)
         handoff = None
-        if args.results_output:
+        provenance = None
+        run_record = None
+        if args.results_output or args.delivery_dir or args.run_record:
+            require(management is not None, '--delivery-dir/--run-record', '运行追溯与完整交付需要management分析')
+            require(not args.run_record or args.results_output or args.delivery_dir, '--run-record', '运行记录须与统一结果或完整交付一起使用')
+            import review_trace
+            run_record = read_json(args.run_record, 'run_record') if args.run_record else None
+            provenance = review_trace.build(data, sys.modules[__name__], inputs, source, run_record, args.run_record.parent if args.run_record else None)
             import review_results
-            handoff = review_results.build(data, sys.modules[__name__], source_checked, previous_results)
+            handoff = review_results.build(data, sys.modules[__name__], source_checked, previous_results, history_results, provenance)
+        protected_inputs = [args.input, *args.history_results]+([args.previous_results] if args.previous_results else [])+([args.source] if args.source else [])+([args.run_record] if args.run_record else [])
+        if run_record:
+            attachments = [run_record['prompt'],run_record['settings']]
+            attachments += [call[key] for call in run_record['calls'] for key in ('input','response')]
+            attachments += [item for call in run_record['calls'] for item in call.get('attachments',[])]
+            protected_inputs += [args.run_record.parent/item['path'] for item in attachments]
+        if args.delivery_dir:
+            private_output(args.delivery_dir)
+            require(all(args.delivery_dir.resolve() != p.resolve() and args.delivery_dir.resolve() not in p.resolve().parents for p in protected_inputs), '--delivery-dir', '交付目录不能包含或覆盖输入、来源或历史')
         if args.check_only:
-            print(json.dumps({"valid": True, "sales": data["sales"]["name"], "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
+            print(json.dumps({"valid": True, "sales": data["sales"]["name"], "source_messages_checked": source_checked, "counts": counts,
+                              "trace_coverage": provenance['coverage'] if provenance else None, "delivery_committed": False}, ensure_ascii=False))
+            return 0
+        if args.delivery_dir:
+            import review_delivery
+            result = daily_management.render(data, sys.modules[__name__], daily_view) if daily_view is not None else management.render(data, sys.modules[__name__])
+            result = review_results.stamp_report(result, handoff['analysis_id'])
+            result = review_trace.stamp_report(result, provenance, e)
+            delivery = review_delivery.publish(args.delivery_dir, result, handoff)
+            print(json.dumps({'valid': True, 'delivery': delivery, 'trace_coverage': provenance['coverage']['status']}, ensure_ascii=False))
             return 0
         require(args.output is not None, "--output", "生成时必须指定 HTML 路径")
         require(args.output.suffix.lower() == ".html", "--output", "扩展名必须为 .html")
         require(args.input.resolve() != args.output.resolve(), "--output", "不能覆盖输入数据")
+        protected=[p.resolve() for p in protected_inputs]
+        require(args.output.resolve() not in protected,'--output','不能覆盖历史基线或独立源')
         private_output(args.output)
         require(not args.output.exists() or args.overwrite, "--output", "文件已存在；默认不覆盖，已有授权才可加 --overwrite")
         if args.results_output:
@@ -538,12 +582,14 @@ def main(argv=None):
             require(args.results_output.resolve() not in (args.input.resolve(), args.output.resolve()), '--results-output', '不能覆盖输入或报告')
             require(args.source is None or args.results_output.resolve() != args.source.resolve(), '--results-output', '不能覆盖独立导入源')
             require(args.previous_results is None or args.results_output.resolve() != args.previous_results.resolve(), '--results-output', '不能覆盖历史基线')
+            require(args.results_output.resolve() not in protected,'--results-output','不能覆盖历史基线或独立源')
             private_output(args.results_output)
             require(not args.results_output.exists() or args.overwrite, '--results-output', '结果文件已存在，默认不覆盖')
         css = (Path(__file__).resolve().parent.parent / "assets" / "chat-review.css").read_text(encoding="utf-8")
         result = daily_management.render(data, sys.modules[__name__], daily_view) if daily_view is not None else management.render(data, sys.modules[__name__]) if management else render(data, css)
         if handoff is not None:
             result = review_results.stamp_report(result, handoff['analysis_id'])
+            result = review_trace.stamp_report(result, provenance, e)
             results_text = json.dumps(handoff, ensure_ascii=False, indent=2)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("w" if args.overwrite else "x", encoding="utf-8", newline="\n") as handle:
@@ -555,7 +601,7 @@ def main(argv=None):
         print(json.dumps({"valid": True, "output": str(args.output), "results_output": str(args.results_output) if args.results_output else None,
                           "analysis_id": handoff['analysis_id'] if handoff else None, "source_messages_checked": source_checked, "counts": counts}, ensure_ascii=False))
         return 0
-    except (OSError, UnicodeError, json.JSONDecodeError, ValidationError) as exc:
+    except (OSError, UnicodeError, ValueError) as exc:
         print("无法生成复盘：" + str(exc), file=sys.stderr)
         return 2
 

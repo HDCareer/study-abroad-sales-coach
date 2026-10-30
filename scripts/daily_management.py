@@ -1,6 +1,8 @@
 """Daily changes and action states over labelled evidence; no automatic sales judgment."""
 from collections import Counter
 from datetime import datetime
+import customer_lifecycle as lifecycle
+import review_integrity as integrity
 
 STATES = ('proposed', 'assigned', 'executed_waiting_customer', 'blocked_internal', 'resolved', 'cancelled')
 LABELS = {'proposed':'建议待安排', 'assigned':'待执行', 'executed_waiting_customer':'已执行 等待客户',
@@ -9,6 +11,10 @@ TERMINAL = ('resolved', 'cancelled')
 
 
 def identity(case):
+    life=lifecycle.info(case)
+    tracking=case.get('tracking') or case.get('management',{}).get('tracking') or {}
+    if life and life.get('customer_key'):
+        return ('company',life['customer_key'],tracking.get('opportunity_id'))
     item = case.get('identity') or case.get('validity', {}).get('assessment', {}).get('identity', {})
     if item.get('basis') != 'source_id' or not item.get('account_id') or not item.get('customer_id'):
         return None
@@ -103,25 +109,12 @@ def action_view(a, cutoff):
     return {'code':status,'label':LABELS[status],'attention':False}
 
 
-def build(data, api, previous=None):
+def build(data, api, previous=None, history=None):
     import management_review as mr
     m=data['management']; cutoff=m['cutoff']; cfg=m.get('daily',{})
-    prior={}
-    if previous is not None:
-        api.require(previous.get('schema_version')=='skill3-management-results/1.0','previous-results','需要统一管理结果，不是分析草稿')
-        for field in ('sales','reporting_window'):api.obj(previous.get(field),'previous-results.'+field)
-        api.string(previous.get('analysis_id'),'previous-results.analysis_id')
-        api.require(isinstance(previous.get('cases'),list),'previous-results.cases','需要历史案例数组')
-        api.require(previous['sales']['id']==data['sales']['id'],'previous-results','不能把其他销售结果当本人的昨日基线')
-        api.require(previous['reporting_window']['time_basis']==m['time_basis'],'previous-results','时间口径不同不能直接对照')
-        try:api.require(datetime.fromisoformat(previous['reporting_window']['cutoff'])<=datetime.fromisoformat(cutoff),'previous-results','不能使用未来基线')
-        except (KeyError,TypeError,ValueError):raise api.ValidationError('previous-results：资料截止日期或时区无法比较')
-        for c in previous['cases']:
-            key=identity(c)
-            if c['included'] and key:
-                api.require(key not in prior,'previous-results','同客户多个需求未分清，暂不自动对照')
-                prior[key]=c
-    queue=[]; progress=[]; observed=[]; action_rows=[]; counts=Counter(); seen=set(); current_keys=set()
+    reports=([previous] if previous else [])+list(history or [])
+    prior,baseline_times,baseline_ids=lifecycle.baselines(data,api,reports,identity)
+    queue=[]; progress=[]; observed=[]; action_rows=[]; counts=Counter(); seen=set(); current_keys=set(); comparisons=[]
     def add(c,label,reason,priority=2,kind='change',action_id=None):
         signature=(c['id'],kind,action_id,label)
         if signature in seen:return
@@ -137,15 +130,35 @@ def build(data, api, previous=None):
         old_warning=old.get('trial_warning') if old else None
         baseline=old is not None
         if not baseline:observed.append(c['id'])
+        baseline_at=baseline_times[key].isoformat(' ') if old else None
+        if old:lifecycle.compare(c,old,api,baseline_ids[key],baseline_at)
+        life=lifecycle.info(c)
+        comparisons.append({'case_id':c['id'],'baseline_analysis_id':baseline_ids.get(key),
+                            'baseline_as_of':baseline_at,'context':life['context'] if life else 'unknown',
+                            'status':'matched' if old else 'no_available_baseline',
+                            'previous_headline':old.get('headline') if old else None,'current_headline':c['headline']})
+        previous_events={e['id'] for e in (lifecycle.info(old) or {}).get('events',[])} if old else set()
+        for event in (life or {}).get('events',[]):
+            at=datetime.fromisoformat(event['at'])
+            if event['id'] in previous_events:continue
+            # Delayed evidence belongs to its original period; never invent today's return.
+            if event['kind']!='correction' and not (datetime.fromisoformat(m['week_start'])<=at<=datetime.fromisoformat(m['week_end'])):continue
+            if old and event['kind']!='correction' and at<=baseline_times[key]:continue
+            label=lifecycle.EVENTS[event['kind']]
+            if event['kind']=='customer_question':
+                question_state=integrity.question_state(event,actions(c))
+                if question_state in ('closed','waiting'):continue
+                if question_state=='unknown':label='客户问题 · 处理状态待核'
+            add(c,label,event['reason'],2,'lifecycle',event['id'])
         old_signals={s['id'] for s in old.get('daily_signals',[])} if old else set()
         own={x['id']:x for x in c['source_messages']}
         for signal in cm.get('daily_signals',[]):
             if signal['id'] in old_signals:continue
             if old and signal['kind']!='evidence_correction':
-                api.require(any(datetime.fromisoformat(own[r]['time'])>datetime.fromisoformat(previous['reporting_window']['cutoff']) for r in signal['refs']), 'daily_signal','新的重要变化须有上一时点之后的依据；旧证据纠错单列')
+                api.require(any(datetime.fromisoformat(own[r]['time'])>baseline_times[key] for r in signal['refs']), 'daily_signal','新的重要变化须有上一时点之后的依据；旧证据纠错单列')
             labels={'new_blocker':'客户出现新阻碍','customer_commitment':'客户有新的推进承诺','manager_needed':'需要主管介入','evidence_correction':'已有判断经确认更正'}
             add(c,labels[signal['kind']],signal['reason'],1 if signal['kind']=='manager_needed' else 2,'signal',signal['id'])
-        if baseline:
+        if baseline and lifecycle.sales_applicable(c):
             delta=[]
             if c['validity']['status']!=old['validity']['status']:delta.append('有效等级变化')
             if cm['trial']['paid']!=old['trial']['paid']:delta.append('试听付款状态变化')
@@ -169,7 +182,7 @@ def build(data, api, previous=None):
                     progress.append({'case_id':c['id'],'name':c['name'],'label':row['effective']['label'],'reason':a['action'],'priority':3,'kind':'closed','action_id':a['id']})
                 action_rows.append(row);continue
             action_rows.append(row)
-            oa=old_actions.get(a['id']);ov=action_view(oa,previous['reporting_window']['cutoff']) if oa else None
+            oa=old_actions.get(a['id']);ov=action_view(oa,baseline_at) if oa else None
             changed=oa is None or any(a.get(k)!=oa.get(k) for k in ('status','issue_key','due_at','next_check_at','escalate_at'))
             if a['status'] in TERMINAL and changed:
                 progress.append({'case_id':c['id'],'name':c['name'],'label':LABELS[a['status']],'reason':a['resolution'],'priority':3,'kind':'closed','action_id':a['id']})
@@ -183,10 +196,13 @@ def build(data, api, previous=None):
             add(c,'需落实跟回动作状态',cm['must_follow']['action'],cm['must_follow']['priority'],'followup')
     def group_by_case(items):
         grouped={}
-        for x in items:grouped.setdefault(x['case_id'],[]).append(x)
+        byid={c['id']:c for c in data['cases']}
+        for x in items:
+            key=lifecycle.customer_key(byid[x['case_id']]) or ('case',x['case_id'])
+            grouped.setdefault(key,[]).append(x)
         return [{**v[0],'label':'；'.join(dict.fromkeys(x['label'] for x in v)),
                  'reason':'；'.join(dict.fromkeys(x['reason'] for x in v)),
-                 'priority':min(x['priority'] for x in v),'events':v} for v in grouped.values()]
+                 'priority':min(x['priority'] for x in v),'case_ids':list(dict.fromkeys(x['case_id'] for x in v)),'events':v} for v in grouped.values()]
     queue=group_by_case(queue)
     progress=group_by_case(progress)
     queue.sort(key=lambda x:(x['priority'],x['case_id'],x['kind']))
@@ -196,6 +212,7 @@ def build(data, api, previous=None):
             'source_health':cfg.get('source_health','partial'),'source_note':cfg.get('source_note',data['scope']['coverage']),
             'priority':queue[:limit],'other_attention':queue[limit:],'progress':progress,'first_observed_case_ids':observed,
             'action_counts':dict(counts),'actions':action_rows,
+            'comparisons':comparisons,'history_analysis_ids':sorted({r['analysis_id'] for r in reports}),
             'note':'首次观察不等于新增客户。未列入首页不等于问题已解决；全部待办与完整证据仍可展开。时间仅推进到已声明的资料截止，不使用系统当前时间补造客户状态。'}
 
 
@@ -208,7 +225,7 @@ def render(data, api, view):
     evidence_body,tail=evidence.split('</section>',1)
     indexes,footer=tail.split('<footer',1)
     def cards(items):
-        return ''.join(f'<div class="reason"><button type="button" data-case="{api.e(x["case_id"])}">{api.e(x["name"])} · {api.e(x["label"])}</button><p>{api.e(x["reason"])}</p></div>' for x in items) or '<p>本次没有符合此类条件的新事项。</p>'
+        return ''.join(f'<div class="reason"><button type="button" data-case="{api.e(x["case_id"])}">{api.e(x["name"])} · {api.e(x["label"])}</button><p>{api.e(x["reason"])}</p>'+''.join(f'<button type="button" data-case="{api.e(cid)}">关联需求 {api.e(cid)}</button>' for cid in x.get('case_ids',[])[1:])+'</div>' for x in items) or '<p>本次没有符合此类条件的新事项。</p>'
     rows=''.join(f'<tr><td>{api.e(a["name"])}</td><td>{api.e(a["owner"])}</td><td>{api.e(a["action"])}</td><td>{api.e(a["effective"]["label"])}</td><td>{api.e(a.get("next_check_at") or a.get("due_at") or "节点待核")}</td></tr>' for a in view['actions'])
     baseline=api.e(view['baseline_as_of'] or '无可用基线，本次为首次观察')
     metrics=mr.metrics(data)
@@ -218,4 +235,10 @@ def render(data, api, view):
     numbers=f'<section class="panel"><div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="metric"><b>{len(metrics["week"])}</b><small>当日有记录的会话</small></div><div class="metric"><b>{metrics["new_confirmed"]}</b><small>确认当日新接客户</small></div><div class="metric"><b>{len(metrics["valid"])}</b><small>当日会话中确定有效</small></div><div class="metric"><b>{len(metrics["trial_paid"])}</b><small>当日确认试听付款</small></div><div class="metric"><b>{formal}</b><small>当日确认正式购买</small></div><div class="metric"><b>{mean}</b><small>当日正式订单均单实收</small></div></div><p class="muted">会话不等于新客；新增归属待核{metrics["new_unknown"]}位。付款日期不明和订单覆盖不足不补成0。这里不计算“当天成交/当天新增”的伪转化率。</p>{findings}</section>'
     panel=f'''<section class="panel" id="daily-priority"><h2>今天先处理什么 · {len(view['priority'])}项</h2><p class="muted">对照截至：{baseline}；本次资料截至：{api.e(view['as_of'])}</p><p><b>数据状态：{api.e(view['source_health'])}</b> · {api.e(view['source_note'])}</p>{cards(view['priority'])}<details><summary>其他需关注事项 · {len(view['other_attention'])}项</summary>{cards(view['other_attention'])}</details><details><summary>新进展和已关闭事项 · {len(view['progress'])}项</summary>{cards(view['progress'])}</details><p class="muted">{api.e(view['note'])}</p></section><section class="panel"><details><summary>全部动作状态 · {len(view['actions'])}项</summary><div class="table-scroll"><table><tr><th>客户</th><th>负责人</th><th>动作</th><th>当前状态</th><th>节点</th></tr>{rows}</table></div></details></section>'''
     quality=quality_and_cohorts.render(quality_and_cohorts.build(data),api)
+    life=metrics.get('lifecycle')
+    if life:
+        numbers=f'<section class="panel"><div class="metrics"><div class="metric"><b>{life["new_customers"]}</b><small>本日确认新接客户</small></div><div class="metric"><b>{life["known_active_customers"]}</b><small>本日有记录的已识别客户</small></div><div class="metric"><b>{life["active_effective_customers"]}</b><small>本日销售沟通中的有效客户</small></div><div class="metric"><b>{life["non_sales_cases"]}</b><small>服务／闲聊等非销售案例</small></div><div class="metric"><b>{formal}</b><small>本日确认正式购买需求</small></div></div><p class="muted">身份待核{len(life["identity_unknown_case_ids"])}案；用途待核{life["scope_unknown_cases"]}案。{api.e(life["note"])}</p><p>本日事件：{api.e({lifecycle.EVENTS[k]:v for k,v in life["event_counts"].items()})}</p>{findings}</section>'
+        numbers+=f'<p class="muted">首次添加或新增归属待核：{len(life["new_status_unknown_case_ids"])}案，不当作确认非新客。</p>'
+        comparison_rows=''.join(f'<tr><td><button data-case="{api.e(x["case_id"])}">{api.e(x["case_id"])}</button></td><td>{api.e(lifecycle.CONTEXTS[x["context"]])}</td><td>{api.e(x["baseline_as_of"] or "没有可核实历史基线")}</td><td>{api.e(x["previous_headline"] or "不编造昨日结论")}</td><td>{api.e(x["current_headline"])}</td></tr>' for x in view['comparisons'])
+        panel+=f'<section class="panel"><details><summary>同一案例如何接续 · 历史与本次</summary><div class="table-scroll"><table><tr><th>案例</th><th>本次场景</th><th>历史截至</th><th>历史结论</th><th>本次结论</th></tr>{comparison_rows}</table></div></details></section>'
     return prefix+'</header>'+numbers+panel+quality+'<details class="panel" id="daily-full-analysis"><summary>完整统计 主线图 预警与带教依据</summary>'+archived+'</details><section class="panel" id="evidence-panel"'+evidence_body+'</section><details class="panel"><summary>全部客户索引和当前跟回依据</summary>'+indexes+'</details><footer'+footer

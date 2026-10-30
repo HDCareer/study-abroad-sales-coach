@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 import copy
 import json
+import customer_lifecycle as lifecycle
 
 
 def formal_time(case):
@@ -38,9 +39,8 @@ def validate(data,api):
                     api.require(bool(refs) and started==min(datetime.fromisoformat(own[r]['time']) for r in refs),'cohort.first_contact_at','首触需对应已核实的来源时间，不能凭空提前')
                 else:api.string(meta.get('confirmation_source'),'cohort.confirmation_source')
             except (KeyError,ValueError,TypeError):raise api.ValidationError('cohort.first_contact_at：日期或来源无法核对')
-        identity=c['validity'].get('assessment',{}).get('identity',{})
-        if meta.get('is_new_customer') is True and identity.get('basis')=='source_id':
-            key=(identity['account_id'],identity['customer_id'])
+        key=lifecycle.customer_key(c)
+        if meta.get('is_new_customer') is True and key is not None:
             api.require(key not in seen_new,'cohort','同一新客重复进入获客队列，应先核对客户与需求归属')
             seen_new.add(key)
     evaluation=m.get('evaluation')
@@ -84,13 +84,16 @@ def build(data):
     groups=defaultdict(list); ungrouped=Counter()
     for c in data['cases']:
         if not c['included']:continue
-        cm=c['management'];meta=cm.get('cohort');policy=c['validity'].get('assessment',{}).get('policy_version','unknown')
-        if c['validity']['status'] not in ('high','effective'):
-            ungrouped['有效性未确定或无效']+=1;continue
-        if c['validity'].get('assessment',{}).get('identity',{}).get('basis')!='source_id':
+        cm=c['management'];meta=cm.get('cohort');entry=(meta or {}).get('entry')
+        if not entry:
+            ungrouped['固定入组快照待补 不推算历史分母']+=1;continue
+        policy=entry['policy_version']
+        if entry['validity'] not in ('high','effective'):
+            ungrouped['入组有效性未确定']+=1;continue
+        if lifecycle.customer_key(c) is None:
             ungrouped['稳定客户身份待核 不给精确转化率']+=1;continue
         acquired=None
-        if meta and meta.get('is_new_customer') is True and meta.get('first_contact_at'):
+        if meta and meta.get('is_new_customer') is True and meta.get('first_contact_at') and entry['purchase_kind']=='first':
             acquired=datetime.fromisoformat(meta['first_contact_at'])
             groups[('new_effective',acquired.date().isoformat(),policy)].append((c,acquired,meta))
         else:ungrouped['新增身份或真实首触待核']+=1
@@ -132,7 +135,7 @@ def build(data):
     return {'version':'skill3-quality-cohorts/1','as_of':m['cutoff'],'cohorts':rows,'ungrouped_reasons':dict(ungrouped),
             'human_review':evals,'review_records':copy.deepcopy(reviews),
             'review_status':'已登记人工复核记录；登记字段不等于程序认证人员或结论' if reviews else '尚无实际人工复核记录，不生成准确率',
-            'note':'按同一接入/完课日及相同经过时长观察；未成熟、缺日期和订单覆盖不全分别列出，不将今天成交除以今天新客。比例变化不证明AI带来因果改善。'}
+            'note':'按固定入组快照及相同经过时长观察，售后闲聊不删除历史批次；缺入组快照不推算精确率。未成熟、缺日期和订单覆盖不全分别列出；比例变化不证明AI带来因果改善。'}
 
 
 def render(result,api):

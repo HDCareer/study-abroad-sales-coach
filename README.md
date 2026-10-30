@@ -2,27 +2,27 @@
 
 为留学课程辅导销售提供下一步建议、客户参考话术和聊天记录复盘。实时带单一客一对话，销售审核后发送；不会自动联系客户或收款。
 
-**当前公开试用版：0.7.31-public.1，对应内部规则0.7.31。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
+**当前公开试用版：0.7.34-public.1，对应内部规则0.7.34。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
 
 ## 下载与使用
 
-- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.31-public.1/study-abroad-sales-coach-public-v0.7.31-public.1.zip)：保留全部目录，不要只复制SKILL.md。
-- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.31-public.1/study-abroad-sales-coach-public-Gem-v0.7.31-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
+- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.34-public.1/study-abroad-sales-coach-public-v0.7.34-public.1.zip)：保留全部目录，不要只复制SKILL.md。
+- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.34-public.1/study-abroad-sales-coach-public-Gem-v0.7.34-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
 - [安装与升级说明](docs/INSTALL.md)
 - [团队试用与反馈记录](docs/TEAM-TRIAL.md)
-- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.31-public.1)
+- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.34-public.1)
 
 公开版包含五阶段、三性五定、48个场景及301段参考话术，保留单客带单和按销售分别复盘的能力。真实价表、内部客户分类标准、业绩目标、供应商及客户记录不在公开包中。实际使用时私下补充[本机构业务信息](references/organization-policy.example.md)，只补当前决定需要的项目。
 
 ## 本次更新
 
-- 连续管理默认Daily：关键数字、核心卡点、变化、到期、升级和关闭事项；同一客户多项变化合卡，完整阶段图与原话按需展开。
-- 区分建议、实际执行、等待客户、内部受阻、逾期、解决和不再适用；去重保留未落实事项，正式购买结束首次追单，服务任务另看。
-- 按真实首触/准确完课日和相同观察时长比较；未成熟与订单待核分别列，不计算当天成交除以当天新客。
-- 登记实际人工复核，分开申诉、主动抽查和基准样本；保留原值、更正与来源，无实际复核不生成准确率。
-- 同一分析与基线生成HTML和统一JSON；继续保留有效性证据、两层带教、稳定身份续接及训练前后观察。
+- 连续客户管理：首次添加只计一次，连续跟进、断联回流、原订单服务及独立新需求分别判断，历史结果和未结动作接续。
+- 可靠性修复：保护已确认付款、完课和成交事实；按事件日期统计交易；固定批次与期末状态分离；改期改派留痕，已解决客户问题核销。
+- 分析追溯：记录实际输入和运行规则指纹，可核对上游真实模型日志与资料覆盖；没有日志如实标未知。
+- 完整交付：同一目录生成 report.html、results.json、run.json、DELIVERY.json，支持独立校验、同内容重试和失败隔离。
+- 保留Daily、两层带教、申诉复核、必须跟回名单及48场景、301段话术方法。
 
-保留48场景与301段话术方法。公开版不含作者机构截图、价格、分类门槛、绩效目标、客户资料或内部留存/预警默认值；使用机构须配置自己的规则。定时导入、状态回传、后台标签和通知需自行接入，不承诺已经完成平台运行或证明业务效果。
+公开版不含作者机构价格、截图、分类门槛、绩效目标、客户资料或内部留存/预警默认值，需使用者配置本机构规则。API采集、模型调用、持久状态、通知及标签回写需由使用方接入；文件与合成检查不代表真实判断准确率或平台已上线。
 
 ## 开始带单或复盘
 

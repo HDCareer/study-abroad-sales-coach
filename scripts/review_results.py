@@ -8,7 +8,7 @@ import re
 VERSION = 'skill3-management-results/1.0'
 
 
-def build(data, api, source_checked=None, previous_results=None):
+def build(data, api, source_checked=None, previous_results=None, history_results=None, provenance=None):
     import management_review as management
     api.require('management' in data, 'results', '统一管理结果需要management数据')
     api.require(data['period']['cutoff'] == data['management']['cutoff'], 'results', '报告与管理结果须采用同一资料截止时间')
@@ -17,6 +17,10 @@ def build(data, api, source_checked=None, previous_results=None):
     api.require(version is not None, 'results', '无法取得Skill运行版本')
     digest_input = {'skill_version': version.group(1), 'analysis': data,
                     'previous_analysis_id': previous_results.get('analysis_id') if previous_results else None}
+    if history_results:
+        digest_input['history_analysis_ids']=sorted({r['analysis_id'] for r in history_results})
+    if provenance is not None:
+        digest_input['provenance_identity'] = provenance['identity']
     digest = hashlib.sha256(json.dumps(digest_input, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
     m = management.metrics(data)
     def snapshot(validity):
@@ -43,6 +47,7 @@ def build(data, api, source_checked=None, previous_results=None):
                       tracking=copy.deepcopy(cm.get('tracking')),
                       actions=copy.deepcopy(cm.get('actions',[])), daily_signals=copy.deepcopy(cm.get('daily_signals',[])),
                       cohort=copy.deepcopy(cm.get('cohort')),
+                      lifecycle=copy.deepcopy(cm.get('lifecycle')),
                       formal=copy.deepcopy(cm['formal']), order=copy.deepcopy(c['order']),
                       trial_warning=management.warning(c, data['management']['cutoff'], data['management'].get('alert_thresholds_hours')),
                       must_follow=copy.deepcopy(cm['must_follow']), recovery=copy.deepcopy(c['recovery']),
@@ -63,9 +68,11 @@ def build(data, api, source_checked=None, previous_results=None):
         records.append(result)
     mean = str(m['mean']) if m['mean'] is not None else None
     import daily_management, quality_and_cohorts
-    daily_view = daily_management.build(data, api, previous_results) if data['management'].get('cadence') == 'daily' else None
+    daily_view = daily_management.build(data, api, previous_results, history_results) if data['management'].get('cadence') == 'daily' else None
     quality = quality_and_cohorts.build(data)
     return {'schema_version': VERSION, 'analysis_id': digest, 'sales': copy.deepcopy(data['sales']),
+            'reliability_version': data['management'].get('reliability_version'),
+            'provenance': copy.deepcopy(provenance),
             'cadence': data['management'].get('cadence','weekly'), 'daily': daily_view, 'quality_and_cohorts':quality,
             'skill_version': version.group(1),
             'period': copy.deepcopy(data['period']), 'scope': copy.deepcopy(data['scope']),
@@ -73,7 +80,9 @@ def build(data, api, source_checked=None, previous_results=None):
             'rules': copy.deepcopy(data['standards']), 'source_verification':
             {'status': 'matched' if source_checked is not None else 'not_checked', 'message_count': source_checked},
             'summary': copy.deepcopy(data['management']['summary']),
+            'lifecycle': m['lifecycle'],
             'metrics': {'week_cases': len(m['week']), 'week_effective': len(m['valid']),
+                        'period_scope_unknown_case_ids': m['period_scope_unknown'],
                         'week_trial_paid': len(m['trial_paid']), 'week_formal_confirmed': len(m['formal']),
                         'average_formal_receipt_rmb': mean},
             'coaching': copy.deepcopy(data['management'].get('coaching')),

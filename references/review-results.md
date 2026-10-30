@@ -4,6 +4,8 @@
 
 ## 生成
 
+公司0.7.34新交付使用[分析追溯与完整交付](analysis-trace-and-delivery.md)的`--delivery-dir`，同时输出report.html、results.json、run.json与DELIVERY.json；消费前运行独立交付校验。下方两文件命令保留为旧格式兼容，不代表完整交付通过。
+
 ```text
 python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> --results-output <统一结果.json> --source <独立导入的cases.json>
 ```
@@ -28,8 +30,15 @@ python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> 
 | longitudinal | 可选跨周机会定义和实际培训事件；没有时为null |
 | cadence、daily | daily/weekly/period；Daily保留基线截止、优先/其他需关注、新进展、全部动作与派生状态。历史输入缺cadence按weekly兼容 |
 | quality_and_cohorts | 同批成熟期、未纳入原因、按来源分开的人工复核汇总及逐项登记；无真实复核不报准确率 |
+| lifecycle | 0.7.32扩展：本期公司身份已知的去重客户数、销售/非销售/待核案数及发生日事件数；不同单位不相加 |
+| reliability_version | 0.7.33扩展：公司新分析为1.0；旧数据null不代表通过新合同 |
+| provenance | 0.7.34扩展：实际本地输入/运行文件指纹、上游登记模型与调用、资料覆盖及证据边界；旧结果null不代表已核验 |
+
+0.7.33按[可靠性合同](review-integrity.md)保留week.sales_scope、cohort.entry、correction.changes、action.change与客户问题action_ids。metrics.period_scope_unknown_case_ids列期间销售用途待核案例，不能把未计入确认为无效。week_trial_paid、week_formal_confirmed按业务日期从全部纳入案例计数；average_formal_receipt_rmb为本期新订单截至资料截止的累计实收均值，不是本期现金流。
 
 每个纳入案例包括以下字段：
+
+- `lifecycle`按[客户连续管理](customer-lifecycle.md)保留四类场景、首次添加、需求状态、统计适用性及事件。非销售沟通历史有效性可保留；没有历史有效判断时not_applicable表示本次不评，不是无效流量。`metrics.week_effective`只计销售适用的有效需求；活跃客户去重数见顶层lifecycle。
 
 - `case_id`是本批定位编号；跨批匹配使用`identity`中的来源账号与客户ID。未知客户ID为null，显示名不能冒充稳定身份。来源ID尚未独立核对时不得声称已在原平台核实。
 - `validity`为当前等级、组合显示label、reason、refs、price_silence与assessment。high覆盖effective，不重复计数；price_silence=yes分别显示“优质有效—报价消失”或“基础有效—报价消失”。仅问价但需求未知仍pending。新批次明确填写附加状态，旧数据缺字段导出unknown，不从reason文字反猜。
@@ -43,7 +52,9 @@ python scripts/render_chat_review.py <复盘数据.json> --output <报告.html> 
 
 ## 一致性与复核
 
-生成器使用同一等级显示函数、周统计函数、预警函数和跟回排序，先校验再输出；不读关键词重新分类、不改AI归因。analysis_id表示同一分析版本，原始输入仍是可再生成报告的完整记录，交付JSON不是另一个可随意手改的真源。发现错误先回到对应案例和证据，记录人工复核及修改原因，再从修正分析重新生成两份结果；不只改其中一份文件。
+Daily另可重复传`--history-results <相关旧统一结果.json>`，每案选择最新可用记录；历史分析编号集合参与analysis_id。`daily.comparisons`记录逐案是否匹配、基线编号/截止、历史与本次结论；同一时点冲突拒绝静默选择。输出不覆盖历史。新版字段为兼容增量，schema_version仍为1.0；下游必须同时检查skill_version和是否含lifecycle，不能把旧空字段当0或完整支持。
+
+生成器使用同一等级显示函数、周统计函数、预警函数和跟回排序，先校验再输出；不读关键词重新分类、不改AI归因。analysis_id表示同一分析版本，0.7.34 CLI同时绑定来源、运行文件与模型日志附件指纹。原始输入仍是可再生成报告的完整记录，交付JSON不是另一个可随意手改的真源。发现错误先回到对应案例和证据，记录人工复核及修改原因，再从修正分析生成新的完整交付目录；不只改其中一份文件或覆盖原版本。
 
 具体执行[销售申诉与人工复核规则](appeals-and-review.md)：复核记录单独存本批私有目录，相关待核/更正说明同步写入分析现有的理由与限制字段，再统一生成。当前生成器不认证复核权限、不自动办理申诉，也不将AI草稿标成人工确认；标准变更须有具体确认依据及生效范围。
 

@@ -7,6 +7,8 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from decimal import Decimal
 import json
+import customer_lifecycle as lifecycle
+import review_integrity as integrity
 
 
 def dt(value):
@@ -171,14 +173,21 @@ def validate(data, api, source=None):
         coaching_review.validate(data, api)
     import longitudinal_review
     longitudinal_review.validate_input(data, api)
+    lifecycle.validate(data, api)
     import daily_management, quality_and_cohorts
     daily_management.validate(data, api)
     quality_and_cohorts.validate(data, api)
+    integrity.validate(data, api)
     return data
 
 
 def warning(case, cutoff, thresholds=None):
     cm = case['management']
+    if not lifecycle.sales_applicable(case):
+        return {'code':'not_applicable','label':'本次非销售咨询或用途待核','hours':None}
+    life=lifecycle.info(case)
+    if life and life['opportunity_status'] in ('closed','dormant','none'):
+        return {'code':'inactive','label':'本需求已结束或暂存；保留历史时钟','hours':None}
     t = cm['trial']
     if cm['formal']['confirmed']:
         return {'code': 'converted', 'label': '已正式购买', 'hours': None}
@@ -210,9 +219,10 @@ def metrics(data):
         return bool(value) and start <= dt(value) <= end
     all_cases = [c for c in data['cases'] if c['included']]
     week = [c for c in all_cases if c['management']['week']['included']]
-    valid = [c for c in week if c['management']['week']['validity']['status'] in ('effective', 'high')]
-    paid = [c for c in week if c['management']['trial']['paid'] is True and in_week(c['management']['trial']['payment_at'])]
-    formal = [c for c in week if c['management']['formal']['confirmed'] and (
+    sales_week = [c for c in week if integrity.period_sales_scope(c,m) is True]
+    valid = [c for c in sales_week if c['management']['week']['validity']['status'] in ('effective', 'high')]
+    paid = [c for c in all_cases if c['management']['trial']['paid'] is True and in_week(c['management']['trial']['payment_at'])]
+    formal = [c for c in all_cases if c['management']['formal']['confirmed'] and (
         in_week(c['management']['formal']['confirmed_at']) or
         any(in_week(o['confirmed_at']) for o in c['management']['formal']['orders']))]
     order_rows = [(c, o) for c in all_cases for o in c['management']['formal']['orders'] if in_week(o['confirmed_at'])]
@@ -220,14 +230,16 @@ def metrics(data):
     complete = bool(order_rows) and data['scope']['orders_complete'] and all(o['receipts'] and all(r['currency'] in ('CNY', 'RMB', '人民币') for r in o['receipts']) for _, o in order_rows)
     complete = complete and all(any(c['id'] == owner['id'] for owner, _ in order_rows) for c in formal)
     mean = known_total / len(order_rows) if complete else None
-    follow = sorted([c for c in all_cases if c['management']['must_follow']['needed']], key=lambda c: (c['management']['must_follow']['priority'], - (warning(c, m['cutoff'], m.get('alert_thresholds_hours')).get('hours') or 0), c['id']))
-    alerts = [(c, warning(c, m['cutoff'], m.get('alert_thresholds_hours'))) for c in all_cases if c['management']['trial']['completed'] and not c['management']['formal']['confirmed']]
+    follow = sorted([c for c in all_cases if lifecycle.sales_applicable(c) and c['management']['must_follow']['needed']], key=lambda c: (c['management']['must_follow']['priority'], - (warning(c, m['cutoff'], m.get('alert_thresholds_hours')).get('hours') or 0), c['id']))
+    alerts = [(c, warning(c, m['cutoff'], m.get('alert_thresholds_hours'))) for c in all_cases if lifecycle.sales_applicable(c) and c['management']['trial']['completed'] and not c['management']['formal']['confirmed'] and warning(c, m['cutoff'], m.get('alert_thresholds_hours'))['code']!='inactive']
     return {'week': week, 'valid': valid, 'trial_paid': paid, 'formal': formal, 'mean': mean,
             'current_formal': sum(c['management']['formal']['confirmed'] for c in all_cases),
             'undated_formal': sum(c['management']['formal']['confirmed'] and not c['management']['formal']['confirmed_at'] for c in all_cases),
             'undated_trial': sum(c['management']['trial']['paid'] is True and not c['management']['trial']['payment_at'] for c in all_cases),
             'must_follow': follow, 'alerts': alerts, 'known_total': known_total,
-            'new_confirmed': sum(c['management']['week']['new_customer'] is True for c in week),
+            'sales_week': sales_week, 'lifecycle': lifecycle.summary(data),
+            'period_scope_unknown': [c['id'] for c in week if integrity.period_sales_scope(c,m) is None],
+            'new_confirmed': lifecycle.period_customer_count([c for c in all_cases if c['management']['week']['new_customer'] is True]),
             'new_unknown': sum(c['management']['week']['new_customer'] is None for c in week)}
 
 
@@ -260,7 +272,7 @@ def render(data, api):
     def case_list(cases):
         return '<div class="case-links">' + ''.join(case_button(c) for c in cases) + '</div>'
     metrics_html = ''.join(f'<div class="metric"><small>{e(label)}</small><b>{e(value)}</b></div>' for label, value in [
-        ('本期纳入会话', len(s['week'])), ('确定有效', len(s['valid'])), ('本期确认首课付款', len(s['trial_paid'])),
+        ('本期纳入案例', len(s['week'])), ('有效销售需求', len(s['valid'])), ('本期确认首课付款', len(s['trial_paid'])),
         ('本期确认正式购买', len(s['formal']) if len(s['formal']) or data['scope']['orders_complete'] else '待核'),
         ('正式订单均单实收', '¥' + format(s['mean'], ',.0f') if s['mean'] is not None else '待核')])
     summary_html, reason_html = [], []
@@ -269,7 +281,7 @@ def render(data, api):
         reason_html.append(f'<details class="reason-box" id="finding-{i}" hidden><summary>{e(finding["claim"])} · {len(finding["case_ids"])}案</summary><p class="muted">{e(finding["limit"])}</p>{case_list([byid[x] for x in finding["case_ids"]])}</details>')
     flow = []
     valid = s['valid']
-    flow_cases = s['week']
+    flow_cases = s['sales_week']
     valid_ids = {c['id'] for c in valid}
     for i, (key, label) in enumerate(api.STAGES.items()):
         def phase(c): return c['management']['week']['phases'][key]
@@ -280,10 +292,10 @@ def render(data, api):
         pending = [c for c in flow_cases if phase(c)['state'] not in ('done', 'gap') and phase(c).get('applicable') is not False]
         width = 100 * len(done) / max(1, len(flow_cases))
         valid_done = sum(c['id'] in valid_ids for c in done)
-        flow.append(f'<div class="flow-row"><span>{e(label)}</span><div class="track" role="img" aria-label="{e(label)}已完成{len(done)}位，基于本期{len(flow_cases)}位客户"><div class="bar" style="width:{width:.3f}%"></div></div><button type="button" class="flow-value" data-reason="done-{key}">{len(done)}位完成 →</button></div>')
-        reason_html.append(f'<details class="reason-box" id="done-{key}" hidden><summary>{e(label)} · {len(done)}位完成（含不足）</summary>{case_list(done) or "<p>无可确认完成案例。</p>"}</details>')
-        detail_note = '；'.join(text for count, text in [(weak, f'其中{weak}位完成但不足'), (len(unknown), f'{len(unknown)}位待核'), (len(skipped), f'{len(skipped)}位无需经过')] if count)
-        flow.append(f'<div class="muted gap-link">完成者中确定有效{valid_done}位' + ('；' + e(detail_note) if detail_note else '') + '</div>')
+        flow.append(f'<div class="flow-row"><span>{e(label)}</span><div class="track" role="img" aria-label="{e(label)}已完成{len(done)}案，基于本期{len(flow_cases)}案客户"><div class="bar" style="width:{width:.3f}%"></div></div><button type="button" class="flow-value" data-reason="done-{key}">{len(done)}案完成 →</button></div>')
+        reason_html.append(f'<details class="reason-box" id="done-{key}" hidden><summary>{e(label)} · {len(done)}案完成（含不足）</summary>{case_list(done) or "<p>无可确认完成案例。</p>"}</details>')
+        detail_note = '；'.join(text for count, text in [(weak, f'其中{weak}案完成但不足'), (len(unknown), f'{len(unknown)}案待核'), (len(skipped), f'{len(skipped)}案无需经过')] if count)
+        flow.append(f'<div class="muted gap-link">完成者中确定有效{valid_done}案' + ('；' + e(detail_note) if detail_note else '') + '</div>')
         previous = list(api.STAGES)[i-1] if i else None
         def eligible(c):
             phases = c['management']['week']['phases']
@@ -295,22 +307,22 @@ def render(data, api):
         transition = [c for c in pending if eligible(c)]
         if transition:
             link_label = '本环节未完成／待核' if i == 0 else '已完成前序、本环节未推进'
-            flow.append(f'<button type="button" class="gap-link" data-reason="stage-{key}">{link_label} {len(transition)}位 · 看原因</button>')
+            flow.append(f'<button type="button" class="gap-link" data-reason="stage-{key}">{link_label} {len(transition)}案 · 看原因</button>')
             groups = defaultdict(list)
             for c in transition:
                 issue = c['management']['issue']
                 kind = {'gap': '推进缺口', 'in_progress': '正常在途', 'constraint': '现实约束', 'unknown': '证据不足', 'none': '未发现明确缺口'}[issue['kind']]
                 groups[kind + ' · ' + issue['label']].append(c)
-            body = ''.join(f'<h3>{e(reason)} · {len(cases)}位</h3>{case_list(cases)}' for reason, cases in groups.items())
-            reason_html.append(f'<details class="reason-box" id="stage-{key}" hidden><summary>前序 → {e(label)}未推进 · {len(transition)}位</summary><p class="muted">本期阶段人数；原因与补救采用资料截止时点的最新记录，可能起于更早环节。缺证和在途不算已流失。</p>{body}</details>')
+            body = ''.join(f'<h3>{e(reason)} · {len(cases)}案</h3>{case_list(cases)}' for reason, cases in groups.items())
+            reason_html.append(f'<details class="reason-box" id="stage-{key}" hidden><summary>前序 → {e(label)}未推进 · {len(transition)}案</summary><p class="muted">本期阶段需求数；原因与补救采用资料截止时点的最新记录，可能起于更早环节。缺证和在途不算已流失。</p>{body}</details>')
     close_branches = Counter(c['management']['week']['phases']['close']['branch'] for c in flow_cases if c['management']['week']['phases']['close']['state'] in ('done', 'gap'))
-    flow.append('<p class="muted">Close支线：' + '；'.join(e(api.BRANCH[k] or '范围未分') + f' {v}位' for k, v in close_branches.items()) + '。首课Close不等于正式购买。</p>')
+    flow.append('<p class="muted">Close支线：' + '；'.join(e(api.BRANCH[k] or '范围未分') + f' {v}案' for k, v in close_branches.items()) + '。首课Close不等于正式购买。</p>')
     warnings = []
     alert_counts = Counter(w['code'] for _, w in s['alerts'])
     for code, name in [('red','红色高风险'), ('orange','橙色预警'), ('yellow','黄色预警'), ('window','首档时限内'), ('time_unknown','完课时间待核'), ('policy_unknown','预警阈值待设')]:
         subset = [(c,w) for c,w in s['alerts'] if w['code'] == code]
         if subset:
-            warnings.append(f'<details><summary><span class="badge {code}">{e(name)} · {len(subset)}位</span></summary><div class="case-links">' + ''.join(case_button(c, w['label'] + ' · ' + w.get('elapsed', c['management']['trial']['time_note']) + ' · ' + api.POSSIBILITY[c['recovery']['possibility']]) for c,w in subset) + '</div></details>')
+            warnings.append(f'<details><summary><span class="badge {code}">{e(name)} · {len(subset)}案</span></summary><div class="case-links">' + ''.join(case_button(c, w['label'] + ' · ' + w.get('elapsed', c['management']['trial']['time_note']) + ' · ' + api.POSSIBILITY[c['recovery']['possibility']]) for c,w in subset) + '</div></details>')
     follow_rows = []
     for c in s['must_follow']:
         f = c['management']['must_follow']
@@ -334,7 +346,7 @@ def render(data, api):
         refs = list(dict.fromkeys(c['validity']['refs'] + c['order']['refs'] + t['completion_refs'] + t['payment_refs'] + cm['formal']['refs'] + [r for phase in c['phases'].values() for r in phase['refs']]))
         morequotes = ''.join(api.quote(c, ref) for ref in refs)
         formal = '已正式购买' if cm['formal']['confirmed'] else '未见正式购买／结果待核'
-        layer_detail = coaching.detail(c, api) if coaching else ''
+        layer_detail = lifecycle.detail(c, api) + (coaching.detail(c, api) if coaching else '')
         if 'assessment' in c['validity']:
             import validity_evidence
             layer_detail = validity_evidence.detail(c, api) + layer_detail
@@ -347,9 +359,10 @@ def render(data, api):
 <div class="draft">{e(c['recovery']['script']) or '本案不生成推销稿；按上述内部动作处理。'}</div><p class="muted">使用前提：{e(c['recovery']['script_conditions'])}</p>
 <details><summary>更多依据：有效性、五环节、付款与完课</summary><p>{e(c['validity']['reason'])}</p>{phase_html}<p>{e(c['order']['summary'])}</p>{morequotes}</details>
 <p><b>面谈重点：</b>{e(c['recovery']['coaching_question'])}</p></article>''')
-    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本期" if c["management"]["week"]["included"] else "仅截止后更新"}</td></tr>' for c in all_cases)
-    caution = f'本期确认新增{ s["new_confirmed"] }位，新增归属待核{ s["new_unknown"] }位；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}位，其中{s["undated_formal"]}位确认日期不明；另有{s["undated_trial"]}位首课付款日期不明，均未强填本期收款。'
-    known_receipts = f'已能确认金额的正式订单人民币到账合计：¥{s["known_total"]:,.2f}，不代表全部实际收入。' if s['known_total'] else '正式订单实收金额未能从记录中核清，不记为零收入。'
+    allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本期有消息" if c["management"]["week"]["included"] else "本期无消息 · 历史续接或截止更新"}</td></tr>' for c in all_cases)
+    caution = f'本期确认新增{ s["new_confirmed"] }位客户，新增归属待核{ s["new_unknown"] }案；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}案，其中{s["undated_formal"]}案确认日期不明；另有{s["undated_trial"]}案首课付款日期不明，均未强填本期收款。'
+    caution += f' 统计期销售适用性待核{len(s["period_scope_unknown"])}案；这些案例未计入已确认销售分母，不等于无效。'
+    known_receipts = f'本期新正式订单截至资料截止的已知人民币累计到账：¥{s["known_total"]:,.2f}；不是本期现金流或全部实际收入。' if s['known_total'] else '本期新正式订单实收金额未能从记录中核清，不记为零收入。'
     exclusions = ''.join(f'<li>{e(c["id"])} · {e(c["name"])}：{e(c["exclusion_reason"])}</li>' for c in data['cases'] if not c['included'])
     criteria = '<details><summary>有效性与付款判定标准</summary><ul>' + ''.join(f'<li>{e(x)}</li>' for x in data['standards']) + '</ul></details>'
     if exclusions:
@@ -358,13 +371,13 @@ def render(data, api):
     correction = '<p class="reason"><b>校正数据版</b> · 本报告仅依据最新上传文件，替代此前混入其他聊天的报告；旧批不计入历史趋势。</p>' if coaching and m['coaching']['basis'] == 'corrected_baseline' else ''
     html = f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>{e(data['sales']['name'])} · {e(report_title)}</title><style>{CSS}</style></head><body><main id="review-root">
 <header><h1>{e(data['sales']['name'])} · {e(report_title)}</h1><p class="muted">统计：{e(m['week_start'])} — {e(m['week_end'])}<br>最新状态截至：{e(m['cutoff'])} · {e(m['time_basis'])}</p>{correction}</header>
-<section class="panel"><div class="metrics">{metrics_html}</div><p class="muted">仅统计有证据且时间落在本期的付款；未知金额不填0，首课不混入正式均单。</p>{''.join(summary_html)}<p><a href="#must-follow">必须跟回 {len(s['must_follow'])}位 · 查看末尾名单 →</a></p><details><summary>统计范围与证据边界</summary><p>{e(caution)}</p><p>{e(data['scope']['coverage'])}</p><p>客户未见实际上课记录，不计入已完成试听，注明记录中未见；中途中断另作说明。预约到期不等于上过课。首课付款为已付人数，后续中断或退款见个案，不代表净留存订单。</p><p>{e(known_receipts)}</p>{criteria}</details></section>
-<section class="panel"><h2>销售主线 · 五环节完成情况</h2><p class="muted">覆盖本期全部{len(flow_cases)}位纳入客户，其中确定有效{len(valid)}位。每列独立计数，不相加；无需异议可直接进入Close。缺证与正常在途不算流失。</p>{''.join(flow)}{''.join(reason_html)}</section>
+<section class="panel"><div class="metrics">{metrics_html}</div><p class="muted">首课付款与正式购买按各自发生日期归期，当天无聊天也计入。均单为本期新正式订单截至资料截止的累计实收；未知金额不填0，首课不混入正式均单。</p>{''.join(summary_html)}<p><a href="#must-follow">必须跟回 {len(s['must_follow'])}案 · 查看末尾名单 →</a></p><details><summary>统计范围与证据边界</summary><p>{e(caution)}</p><p>{e(data['scope']['coverage'])}</p><p>客户未见实际上课记录，不计入已完成试听，注明记录中未见；中途中断另作说明。预约到期不等于上过课。首课付款为已付款需求数，后续中断或退款见个案，不代表净留存订单。</p><p>{e(known_receipts)}</p>{criteria}</details></section>
+<section class="panel"><h2>销售主线 · 五环节完成情况</h2><p class="muted">覆盖本期{len(flow_cases)}个销售咨询需求，其中确定有效{len(valid)}案。按需求计数，同一客户可有多个需求；每列独立计数，不相加；无需异议可直接进入Close。缺证与正常在途不算流失。</p>{''.join(flow)}{''.join(reason_html)}</section>
 <section class="panel"><h2>试听后转正预警</h2><p class="muted">截至最新资料；从已确认实际完课计算。区间只按可证明的最低超时分档，分档依据本机构已确认阈值，不把高风险当自动放弃条件。</p>{''.join(warnings) or '<p>本批没有可确认已完课且仍需转正的案例。</p>'}</section>
 {coaching_html}
 <section class="panel" id="evidence-panel" hidden aria-live="polite"><button type="button" id="hide-evidence">收起个案</button>{''.join(details)}</section>
-<section class="panel"><details><summary>全部客户索引 · {len(all_cases)}位（含统计期后更新）</summary><div class="table-scroll"><table><thead><tr><th>客户</th><th>有效性</th><th>一句话判断</th><th>范围</th></tr></thead><tbody>{allrows}</tbody></table></div></details></section>
-<section class="panel" id="must-follow"><h2>必须跟回的客户 · {len(s['must_follow'])}位</h2><p class="muted">必须采取行动，不代表必然成交。只列当前仍有窗口、有购买基础和具体推进动作的客户。</p><div class="table-scroll"><table><thead><tr><th>客户／证据</th><th>为什么必须跟回</th><th>现在先做什么</th><th>负责人／节点</th></tr></thead><tbody>{''.join(follow_rows) or '<tr><td colspan="4">当前没有足够证据列入必须跟回的客户。</td></tr>'}</tbody></table></div></section>
+<section class="panel"><details><summary>全部案例索引 · {len(all_cases)}案（含统计期后更新）</summary><div class="table-scroll"><table><thead><tr><th>客户</th><th>有效性</th><th>一句话判断</th><th>范围</th></tr></thead><tbody>{allrows}</tbody></table></div></details></section>
+<section class="panel" id="must-follow"><h2>必须跟回的客户 · {len(s['must_follow'])}案</h2><p class="muted">必须采取行动，不代表必然成交。只列当前仍有窗口、有购买基础和具体推进动作的客户。</p><div class="table-scroll"><table><thead><tr><th>客户／证据</th><th>为什么必须跟回</th><th>现在先做什么</th><th>负责人／节点</th></tr></thead><tbody>{''.join(follow_rows) or '<tr><td colspan="4">当前没有足够证据列入必须跟回的客户。</td></tr>'}</tbody></table></div></section>
 <footer class="footer">依据本次私聊导出；图片、语音和群聊未提供的内容不作已知事实。建议尚未发送，补救结果尚未发生。私有资料按本机构资料保留规则处理。</footer>
 </main><script>{SCRIPT}</script></body></html>'''
     return html
