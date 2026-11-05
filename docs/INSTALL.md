@@ -1,6 +1,6 @@
 # 安装与升级
 
-当前版本：0.7.34-public.1。下载链接见[首页](../README.md)。公开包不含内部价表；组织内部使用者请在私有位置补充适用政策，勿上传到本仓库。
+当前版本：0.7.37-public.1。下载链接见[首页](../README.md)。公开包不含内部价表；组织内部使用者请在私有位置补充适用政策，勿上传到本仓库。
 
 ## 完整Skill环境
 
@@ -16,7 +16,7 @@
 
 ## 版本与读取检查
 
-要求助手：报告当前版本，并从已读取资料说明日常客户稿的长度规则、具体服务怎样协商、未获回传能否宣称已确认。读不到哪份文件就明确说明。预期版本为0.7.34-public.1；不能仅凭回答了版本号认定安装成功。
+要求助手：报告当前版本，并从已读取资料说明日常客户稿的长度规则、具体服务怎样协商、未获回传能否宣称已确认。读不到哪份文件就明确说明。预期版本为0.7.37-public.1；不能仅凭回答了版本号认定安装成功。
 
 再给一条不含机构报价的虚构询价，确认它不把示例金额当真价。首次真实使用由销售复核，保留未经修改的原稿。团队反馈方法见[试用说明](TEAM-TRIAL.md)。
 
@@ -35,3 +35,9 @@
 ## 完整交付与连续管理
 
 新分析参照references/customer-lifecycle.md、references/review-integrity.md及references/analysis-trace-and-delivery.md。使用--delivery-dir生成完整目录，随后运行scripts/review_delivery.py独立检查。只有检查成功才消费结果；未提供真实上游日志须标未知。历史输入使用获准保留的统一结果，不依赖对话记忆。
+
+## 主管、经营与跨周模块
+
+先按supervisor-management.md及supervisor-output-contract.md生成每位顾问完整交付，运行scripts/team_management.py prepare，将有依据的主管审阅交给build，再用verify检查完整团队交付。连续运行须传--previous-team-delivery和--require-history；不能只传当周新聊天。完整考核周、截至观察范围和业务数据截止须匹配。业务目标可显式null，进度仅来自业务系统。
+
+已沟通过后暂时失联使用每案contact_review.policy，字段见references/followup-contact.md；无配置不自动暂停普通追单。新客分类、试听预警和联系观察各有自己的配置。生成器仍采用既有基础报告界面，不包含额外视觉预览。

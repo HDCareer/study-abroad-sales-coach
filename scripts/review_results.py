@@ -10,6 +10,7 @@ VERSION = 'skill3-management-results/1.0'
 
 def build(data, api, source_checked=None, previous_results=None, history_results=None, provenance=None):
     import management_review as management
+    import followup_contact
     api.require('management' in data, 'results', '统一管理结果需要management数据')
     api.require(data['period']['cutoff'] == data['management']['cutoff'], 'results', '报告与管理结果须采用同一资料截止时间')
     skill_text = (Path(__file__).resolve().parents[1] / 'SKILL.md').read_text(encoding='utf-8-sig')
@@ -52,6 +53,7 @@ def build(data, api, source_checked=None, previous_results=None, history_results
                       trial_warning=management.warning(c, data['management']['cutoff'], data['management'].get('alert_thresholds_hours')),
                       must_follow=copy.deepcopy(cm['must_follow']), recovery=copy.deepcopy(c['recovery']),
                       report_anchor='case-' + c['id'])
+        result['contact_status'] = followup_contact.build(c, data['management']['cutoff'])
         result['week']['validity'] = snapshot(cm['week']['validity'])
         own = {msg['id']: msg for msg in c['source_messages']}
         used = set()
@@ -77,6 +79,7 @@ def build(data, api, source_checked=None, previous_results=None, history_results
             'skill_version': version.group(1),
             'period': copy.deepcopy(data['period']), 'scope': copy.deepcopy(data['scope']),
             'reporting_window': {key: data['management'][key] for key in ('week_start', 'week_end', 'cutoff', 'time_basis')},
+            'target_period': copy.deepcopy(data['management'].get('target_period')),
             'rules': copy.deepcopy(data['standards']), 'source_verification':
             {'status': 'matched' if source_checked is not None else 'not_checked', 'message_count': source_checked},
             'summary': copy.deepcopy(data['management']['summary']),

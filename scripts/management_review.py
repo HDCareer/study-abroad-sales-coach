@@ -4,7 +4,7 @@ This optional extension keeps the original 1.0 input and renderer compatible.
 Dates use the explicitly declared source clock. No network or browser APIs.
 """
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 import json
 import customer_lifecycle as lifecycle
@@ -13,6 +13,27 @@ import review_integrity as integrity
 
 def dt(value):
     return datetime.fromisoformat(value) if value else None
+
+
+def validate_target_period(value, window):
+    """An explicit full target week is separate from the observed-to-date window."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {'start', 'end'}:
+        raise ValueError('target_period须明确完整考核周start/end')
+    try:
+        if any(not isinstance(value[k], str) or not value[k].strip() for k in ('start', 'end')):
+            raise ValueError('考核周日期须为非空ISO文字')
+        start, end = dt(value['start']), dt(value['end'])
+        observed_start, observed_end, cutoff = (dt(window[k]) for k in ('week_start', 'week_end', 'cutoff'))
+        if not (start == observed_start <= observed_end <= cutoff and observed_end <= end):
+            raise ValueError('考核周须从观察期同一周一起算并覆盖已观察范围')
+        if (start.weekday() != 0 or start.time().replace(tzinfo=None) != datetime.min.time()
+                or end != start + timedelta(days=7) - timedelta(seconds=1)):
+            raise ValueError('完整考核周须为自然周周一00:00:00至周日23:59:59')
+    except (TypeError, KeyError) as exc:
+        raise ValueError('target_period与观察窗口须使用同一时区口径的ISO时间') from exc
+    return {'start': value['start'], 'end': value['end']}
 
 
 def validate(data, api, source=None):
@@ -30,6 +51,19 @@ def validate(data, api, source=None):
     except (ValueError, TypeError, KeyError):
         req(False, 'management', '时间必须是同一时区口径的ISO日期时间')
     api.string(m.get('time_basis'), 'management.time_basis')
+    try:
+        target_period = validate_target_period(m.get('target_period'), m)
+    except ValueError as exc:
+        req(False, 'management.target_period', str(exc))
+    if target_period is not None:
+        # A full target week never permits future messages in the observed snapshot.
+        for case in data['cases']:
+            for message in case.get('source_messages', []):
+                try:
+                    req(dt(message['time']) <= cutoff, case['id'] + '.source_messages',
+                        '完整考核周中的未来消息不能提前进入截至快照')
+                except (ValueError, TypeError, KeyError):
+                    req(False, case['id'] + '.source_messages', '消息时间须与资料截止一致且不晚于截止')
     req(isinstance(m.get('summary'), list) and len(m['summary']) <= 3, 'management.summary', '最多三个有证据的核心判断')
     req(isinstance(m.get('read_case_ids'), list), 'management.read_case_ids', '需要阅读覆盖记录')
     req(len(m['read_case_ids']) == len(set(m['read_case_ids'])), 'management.read_case_ids', '阅读案例重复')

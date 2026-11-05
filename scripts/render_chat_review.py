@@ -267,6 +267,8 @@ def validate(data):
         if case["group"] == "order_check":
             require(order["formal"] == "unknown" or order["first_lesson"] == "unknown", p + ".group", "仅订单核实应明确哪项订单事实未知")
     require(any(c["included"] for c in cases), "cases", "没有纳入案例，不能生成客户复盘")
+    import followup_contact
+    followup_contact.validate(data, sys.modules[__name__])
     return data
 
 
