@@ -2,27 +2,21 @@
 
 为留学课程辅导销售提供下一步建议、客户参考话术和聊天记录复盘。实时带单一客一对话，销售审核后发送；不会自动联系客户或收款。
 
-**当前公开试用版：0.7.37-public.1，对应内部规则0.7.37。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
+**当前公开完整版：0.8.2。** 本轮固定版本投入实际使用，依据真实反馈继续观察，不宣称已证明成交提升或能够替代成熟顾问。
 
 ## 下载与使用
 
-- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.37-public.1/study-abroad-sales-coach-public-v0.7.37-public.1.zip)：保留全部目录，不要只复制SKILL.md。
-- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/releases/download/v0.7.37-public.1/study-abroad-sales-coach-public-Gem-v0.7.37-public.1.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
+- [完整Skill安装包](https://github.com/HDCareer/study-abroad-sales-coach/raw/refs/heads/main/dist/study-abroad-sales-coach-public.zip)：保留全部目录，不要只复制SKILL.md。
+- [Gem知识备用包](https://github.com/HDCareer/study-abroad-sales-coach/raw/refs/heads/main/dist/study-abroad-sales-coach-public-Gem.zip)：先解压，再按所用界面上传文本知识文件；不要把ZIP直接当聊天附件使用。
 - [安装与升级说明](docs/INSTALL.md)
 - [团队试用与反馈记录](docs/TEAM-TRIAL.md)
-- [发布记录](https://github.com/HDCareer/study-abroad-sales-coach/releases/tag/v0.7.37-public.1)
+- [版本清单](MANIFEST.json)
 
 公开版包含五阶段、三性五定、48个场景及301段参考话术，保留单客带单和按销售分别复盘的能力。真实价表、内部客户分类标准、业绩目标、供应商及客户记录不在公开包中。实际使用时私下补充[本机构业务信息](references/organization-policy.example.md)，只补当前决定需要的项目。
 
 ## 本次更新
 
-- 主管管理输出：保留全部单案分析，区分主管关注、顾问执行、历史带教与暂不关注；汇总有原话依据的团队训练主题和每位顾问训练计划。
-- 跨周未结商机：承接上一份完整团队交付；本周缺案不清空，旧判断标待复核，按同一需求的明确成交或结束证据关闭。
-- 经营指标：接入业务系统净营收、首次正式购课转化、首次正课客单价、月累计与截至应达进度；完整考核周与实际观察范围分开，未知不填零。
-- 联系状态：本机构显式配置观察时限、独立轮次与政策版本；没有配置时显示待设。合理等待、真实回复恢复及付费课程责任继续保留。
-- 详情展开原有判断、表达、执行、逐节点复盘、训练依据和试听接续信息；保留原销售判断方法、48场景与301段参考话术。
-
-本版不包含界面美化预览、真实客户聊天、业务Excel或公司内部截图、价格、目标与默认联系政策。API采集、模型调用、持久化和业务回写仍需使用方接入。合成CLI与交付检查不代表真实判断准确率或业务效果。
+单客微信先给可发回复，再给两行备忘。新增会议场景的脱敏改写，用于需求诊断、教学分工、试听反馈、比价退出、家庭商量及交易交付。原场景库、程序交付和主管管理继续保留。
 
 ## 开始带单或复盘
 
