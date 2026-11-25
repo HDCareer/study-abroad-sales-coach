@@ -4,7 +4,7 @@
 
 ## 逐项判断与结论
 
-沿用high/effective/pending/scope_unknown/invalid五状态；逐项记录真实回复、具体需求、覆盖、交付、授课语言和学术诚信的yes/no/unknown等状态、理由与本案refs。优质的强/辅助信号按机构确认的实际定义取用；不把未成交、嫌贵或报价后沉默自动判为无效。系统提示与真实用户回复分开；看不到图片/语音内容不能猜，但真实发送行为不能当从未回复。
+沿用high/effective/pending/scope_unknown/need_unlanded/invalid 六状态；逐项记录真实回复、具体需求、覆盖、交付、授课语言和学术诚信的yes/no/unknown等状态、理由与本案refs。优质的强/辅助信号按机构确认的实际定义取用；不把未成交、嫌贵或报价后沉默自动判为无效。系统提示与真实用户回复分开；看不到图片/语音内容不能猜，但真实发送行为不能当从未回复。
 
 新分析在validity.assessment保留version="validity-evidence/1"、policy_version、identity、as_of、status、reason_code、coverage、criteria、quality_signals、lost_evidence、transition、next_review。identity含basis和来源account_id/customer_id；缺稳定身份basis=unknown、customer_id=null，不冒充跨批关联。coverage含history、note、missing；criteria恰好reply/need/scope/delivery/language/integrity，每项state/explanation/refs。quality_signals每项kind/explanation/refs；同事实不重复当多个信号，程序仅检查数量/引用，不能证明语义。
 
@@ -17,3 +17,11 @@
 同一份分析生成报告和[统一结果](review-results.md)。统计期末与最新资料截止分别保留。transition有可追溯旧快照时才填previous_status/previous_as_of/previous_policy_version/previous_reason/previous_refs/kind/refs/reason；kind为new_evidence/correction/policy_update。新消息不倒填旧时点，政策更新须明确新版本。新情况不自动计原AI误判，人工纠错按[复核规则](appeals-and-review.md)执行。
 
 独立源核对使用报告生成器的source选项；未提供源只能声称结构与引用检查。所有原话、身份、报告与跨周档案按本机构授权范围和保留期限保存在私有位置，不进入GitHub。代码不连接平台或认证复核权限，不用结构通过冒充准确率。
+
+## 新快照的证据填写
+
+基础有效须引用实际推进的消息，可写在 assessment.progress_refs 或报告的 validity.refs。业务系统已确认且符合本次咨询归属的付款可单独佐证。确有需求但销售尚未推进时，保留 pending/need_unknown 并说明原因。need_unlanded 的 assessment.unlanded_evidence 填 first_contact_ref 和 follow_up_refs，由分析者核实每次跟进确实针对需求、追问后仍未补充且没有成交或已确认付款。引用真实客户回复，按本快照截止时点判断。周末快照使用周末时点自己的 assessment。历史结果按原口径留存。
+公开版须配置 assessment.policy 的 unlanded_after_hours、unlanded_minimum_followups。机构要求基础有效有实际推进时设置 require_progress=true。机构确认的到账证据使用 payment 的 confirmed、at、amount、source，按本机构的订单归属和退费例外落实。
+
+
+已有快照若已保留完整前史、可追溯首触并在 validity.refs 引用足够的有效跟进，可沿用原结构。

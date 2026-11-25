@@ -82,7 +82,7 @@ sensitive 可省略，其他必填。有效性扩展中的失联判断需保留�
 
 validity:{status,reason,refs}：
 
-- status 为 high 优质有效、effective 基础有效、pending 待判定、scope_unknown 范围待核、invalid 无效。
+- status 为 high 优质有效、effective 基础有效、pending 待判定、scope_unknown 范围待核、need_unlanded 无效·需求未落地、invalid 无效。
 - reason 写符合哪些条件/缺什么证据；refs 至少一条本案消息。
 - 无效不等于排除：真实无效线索仍在会话总数里；内部同事等才按归属排除。
 - 新批次的`assessment`按[有效性逐项判断与更新](validity-assessment.md#机器可读结果可与管理报告共同使用)填写，逐项给可见证据、数据缺口、时点及必要的状态变化；`assessment.status`须与当前`status`一致。报告生成器发现该字段时自动检验，不含字段的历史数据保持兼容。`management.week.validity`仍保留统计期结束时的判断，不可用后来证据倒填。
@@ -156,3 +156,5 @@ rescue 且当前可/有条件推进时必须给 script 和前提。明确停止�
 校验会阻止：跨销售混合、消息/行号重复归属、跨案例引用、敏感/空白引用、非五列主阶段、漏字段被当成零、已确认实收与订单状态冲突、救单缺证据链和动作、重复输出覆盖。
 
 校验不能证明：读取了未包含的截图/语音、原始提取没有漏字、专业归因正确、未成交必由销售导致、补救会成交。交付前仍要对照原文件抽核引用、核对所有重点案，再检查HTML计数、五列标记、优先顺序和实际阅读。浏览器策略禁止预览时不得绕过；如实说明只完成结构/静态验证，不称浏览器已验收。
+
+需求未落地按机构确认的条件登记为 need_unlanded。无效总数合并 invalid 与 need_unlanded；跨口径分列。

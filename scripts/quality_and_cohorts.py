@@ -126,7 +126,7 @@ def build(data):
         if not items:continue
         decidable=[r for r in items if r['kind'] in ('upheld','correction') and r['human_value'] is not None]
         agree=sum(json.dumps(r['ai_value'],sort_keys=True)==json.dumps(r['human_value'],sort_keys=True) for r in decidable)
-        invalid=[r for r in decidable if r['target']=='validity' and r['ai_value']=='invalid']
+        invalid=[r for r in decidable if r['target']=='validity' and r['ai_value'] in ('invalid', 'need_unlanded')]
         wrong_invalid=sum(r['human_value'] in ('high','effective') for r in invalid)
         evals.append({'sample_type':sample,'review_items':len(items),'unique_cases':len({r['case_id'] for r in items}),
                       'decidable_items':len(decidable),'agreed_items':agree,'agreement_on_reviewed_items':agree/len(decidable) if decidable else None,

@@ -107,7 +107,12 @@ def validate(data, api, source=None):
         week_validity = api.obj(week.get('validity'), p + '.week.validity')
         api.choice(week_validity.get('status'), api.VALIDITY, p + '.week.validity.status')
         api.string(week_validity.get('reason'), p + '.week.validity.reason')
-        refs(week_validity.get('refs'), p + '.week.validity.refs', week['included'], week['included'])
+        assessment = week_validity.get('assessment')
+        if assessment is not None or week_validity['status'] == 'need_unlanded':
+            import validity_evidence
+            validity_evidence.validate(assessment, c['source_messages'], week_validity['status'], m['week_end'], api, week_validity.get('refs', []))
+        paid_snapshot = bool(((assessment or {}).get('payment') or {}).get('confirmed'))
+        refs(week_validity.get('refs'), p + '.week.validity.refs', week['included'] and not paid_snapshot, week['included'])
         if 'price_silence' in week_validity:
             import validity_evidence
             validity_evidence.validate_price_silence(week_validity, c['source_messages'], m['week_end'], api)
@@ -266,7 +271,9 @@ def metrics(data):
     mean = known_total / len(order_rows) if complete else None
     follow = sorted([c for c in all_cases if lifecycle.sales_applicable(c) and c['management']['must_follow']['needed']], key=lambda c: (c['management']['must_follow']['priority'], - (warning(c, m['cutoff'], m.get('alert_thresholds_hours')).get('hours') or 0), c['id']))
     alerts = [(c, warning(c, m['cutoff'], m.get('alert_thresholds_hours'))) for c in all_cases if lifecycle.sales_applicable(c) and c['management']['trial']['completed'] and not c['management']['formal']['confirmed'] and warning(c, m['cutoff'], m.get('alert_thresholds_hours'))['code']!='inactive']
-    return {'week': week, 'valid': valid, 'trial_paid': paid, 'formal': formal, 'mean': mean,
+    invalid = [c for c in sales_week if c['management']['week']['validity']['status'] in ('invalid', 'need_unlanded')]
+    unlanded = [c for c in invalid if c['management']['week']['validity']['status'] == 'need_unlanded']
+    return {'week': week, 'valid': valid, 'invalid': invalid, 'need_unlanded': unlanded, 'trial_paid': paid, 'formal': formal, 'mean': mean,
             'current_formal': sum(c['management']['formal']['confirmed'] for c in all_cases),
             'undated_formal': sum(c['management']['formal']['confirmed'] and not c['management']['formal']['confirmed_at'] for c in all_cases),
             'undated_trial': sum(c['management']['trial']['paid'] is True and not c['management']['trial']['payment_at'] for c in all_cases),
@@ -395,6 +402,7 @@ def render(data, api):
 <p><b>面谈重点：</b>{e(c['recovery']['coaching_question'])}</p></article>''')
     allrows = ''.join(f'<tr><td>{case_button(c, "看证据")}</td><td>{e(api.validity_label(c["validity"]))}</td><td>{e(c["headline"])}</td><td>{"本期有消息" if c["management"]["week"]["included"] else "本期无消息 · 历史续接或截止更新"}</td></tr>' for c in all_cases)
     caution = f'本期确认新增{ s["new_confirmed"] }位客户，新增归属待核{ s["new_unknown"] }案；会话数不冒充新增流量。正式购买当前可确认{s["current_formal"]}案，其中{s["undated_formal"]}案确认日期不明；另有{s["undated_trial"]}案首课付款日期不明，均未强填本期收款。'
+    caution += f' 统计期无效合计 {len(s["invalid"])}，其中需求未落地 {len(s["need_unlanded"])}。'
     caution += f' 统计期销售适用性待核{len(s["period_scope_unknown"])}案；这些案例未计入已确认销售分母，不等于无效。'
     known_receipts = f'本期新正式订单截至资料截止的已知人民币累计到账：¥{s["known_total"]:,.2f}；不是本期现金流或全部实际收入。' if s['known_total'] else '本期新正式订单实收金额未能从记录中核清，不记为零收入。'
     exclusions = ''.join(f'<li>{e(c["id"])} · {e(c["name"])}：{e(c["exclusion_reason"])}</li>' for c in data['cases'] if not c['included'])

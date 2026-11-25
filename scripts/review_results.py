@@ -85,6 +85,8 @@ def build(data, api, source_checked=None, previous_results=None, history_results
             'summary': copy.deepcopy(data['management']['summary']),
             'lifecycle': m['lifecycle'],
             'metrics': {'week_cases': len(m['week']), 'week_effective': len(m['valid']),
+                        'week_invalid': len(m['invalid']),
+                        'week_need_unlanded': len(m['need_unlanded']),
                         'period_scope_unknown_case_ids': m['period_scope_unknown'],
                         'week_trial_paid': len(m['trial_paid']), 'week_formal_confirmed': len(m['formal']),
                         'average_formal_receipt_rmb': mean},

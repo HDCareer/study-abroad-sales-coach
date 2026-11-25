@@ -12,6 +12,7 @@ REASONS = {
     'high': ('supported',), 'effective': ('supported',),
     'pending': ('need_unknown', 'reply_unknown', 'history_incomplete', 'other_unknown'),
     'scope_unknown': ('scope_unknown', 'delivery_unknown'),
+    'need_unlanded': ('need_unlanded',),
     'invalid': ('lost', 'out_of_scope', 'academic_misconduct_only', 'journal', 'unavailable_delivery'),
 }
 STRONG = {'deadline', 'materials', 'asked_price', 'asked_teacher', 'asked_process',
@@ -66,7 +67,7 @@ def validate_price_silence(validity, messages, cutoff, api):
                     p, '问价后已有真实客户回复，不能仍标报价消失')
 
 
-def validate(assessment, messages, expected_status, expected_cutoff, api):
+def validate(assessment, messages, expected_status, expected_cutoff, api, report_refs=()):
     """Check evidence references and mechanical contradictions, not semantic truth."""
     req, choice, string, obj = api.require, api.choice, api.string, api.obj
     p = 'validity.assessment'
@@ -118,6 +119,39 @@ def validate(assessment, messages, expected_status, expected_cutoff, api):
             except TypeError:
                 req(False, label, '消息与判断时点的时区口径不一致')
 
+    payment = a.get('payment')
+    paid = False
+    if payment is not None:
+        pm = obj(payment, p + '.payment')
+        req(isinstance(pm.get('confirmed'), bool), p + '.payment.confirmed', '付款确认须为布尔值')
+        string(pm.get('source'), p + '.payment.source')
+        amount = pm.get('amount')
+        req(type(amount) in (int, float) and abs(amount) < float('inf') and (not pm['confirmed'] or amount > 0),
+            p + '.payment.amount', '付款金额须为数字')
+        paid_at = date(pm.get('at'), p + '.payment.at')
+        try:
+            req(paid_at <= as_of, p + '.payment.at', '付款时间不能晚于资料截止')
+        except TypeError:
+            req(False, p + '.payment', '付款与判断时点的时区口径不一致')
+        paid = pm['confirmed'] is True
+    if paid:
+        req(status in ('effective', 'high'), p + '.status',
+            '已确认付款的客户必须判为有效，不能待判或无效')
+
+    def refs(values, label, required=False):
+        req(isinstance(values, list), label, '必须为引用数组')
+        req(not required or bool(values), label, '该判断需要原始证据')
+        req(all(isinstance(x, str) for x in values), label, '引用编号必须为文本')
+        req(len(values) == len(set(values)), label, '引用不能重复')
+        for rid in values:
+            req(rid in own, label, '引用必须属于本案')
+            msg = own[rid]
+            req(not msg.get('sensitive') and bool(msg.get('text', '').strip()), label, '不能引用敏感或空白消息')
+            try:
+                req(date(msg.get('time'), label + '.time') <= as_of, label, '不能引用资料截止之后的消息')
+            except TypeError:
+                req(False, label, '消息与判断时点的时区口径不一致')
+
     cov = obj(a.get('coverage'), p + '.coverage')
     choice(cov.get('history'), ('complete', 'partial', 'unknown'), p + '.coverage.history')
     string(cov.get('note'), p + '.coverage.note')
@@ -135,18 +169,67 @@ def validate(assessment, messages, expected_status, expected_cutoff, api):
         req(state != 'assumed' or key in ('language', 'integrity'), p + '.' + key, '只有现行默认条件可标假定')
         req(state != 'not_observed' or key == 'reply', p + '.' + key, '仅回复项可标未观察到')
         string(item.get('explanation'), p + '.' + key + '.explanation')
-        refs(item.get('refs'), p + '.' + key + '.refs', state in ('yes', 'no') or (key == 'language' and state == 'assumed'))
+        need_refs = state in ('yes', 'no') or (key == 'language' and state == 'assumed')
+        if paid and (key in ('reply', 'need', 'scope', 'delivery') and state == 'yes' or key == 'language' and state == 'assumed'):
+            # 付款事实代替聊天原话：引用可空，解释里写清付款信息（时间/金额/来源）
+            need_refs = False
+        refs(item.get('refs'), p + '.' + key + '.refs', need_refs)
 
     if status in ('effective', 'high'):
         for key in ('reply', 'need', 'scope', 'delivery'):
             req(criteria[key]['state'] == 'yes', p + '.' + key, '确定有效须有该条件的正向证据')
         for key in ('language', 'integrity'):
-            req(criteria[key]['state'] in ('yes', 'assumed'), p + '.' + key, '确定有效须满足或符合现行默认条件')
+            ok = criteria[key]['state'] in ('yes', 'assumed')
+            if paid:
+                # 已付款成交：语言无原话可待核；此前有代写等诉求也只在报告留痕，不阻断有效
+                ok = ok or criteria[key]['state'] == 'unknown' or (key == 'integrity' and criteria[key]['state'] == 'no')
+            req(ok, p + '.' + key, '确定有效须满足或符合现行默认条件')
+    if status == 'effective' and policy.get('require_progress') is True and not paid:
+        progress = a.get('progress_refs', list(report_refs))
+        refs(progress, p + '.progress_refs', True)
+        req(any(own[r].get('source_role') == 'sales' for r in progress), p + '.progress_refs',
+            '基础有效须有实际推进证据，客户单方面问价不足以成立')
+    if status == 'need_unlanded':
+        hours = policy.get('unlanded_after_hours')
+        minimum = policy.get('unlanded_minimum_followups')
+        req(type(hours) in (int, float) and 0 < hours < float('inf') and type(minimum) is int and minimum > 0,
+            p + '.policy', '需要本机构确认的跟进次数和时限')
+        proof = a.get('unlanded_evidence')
+        if proof is None and cov['history'] == 'complete':
+            # Older input can already cite the first contact and both follow-ups.
+            cited = list(report_refs)
+            refs(cited, p + '.refs', True)
+            visible_sales = [msg for msg in messages if msg.get('source_role') == 'sales'
+                             and not msg.get('sensitive') and msg.get('text', '').strip()]
+            if visible_sales:
+                first_id = min(visible_sales, key=lambda msg: date(msg['time'], p + '.time'))['id']
+                proof = {'first_contact_ref': first_id, 'follow_up_refs': [
+                    rid for rid in cited if rid != first_id and own[rid].get('source_role') == 'sales']}
+        proof = obj(proof, p + '.unlanded_evidence')
+        first = string(proof.get('first_contact_ref'), p + '.unlanded_evidence.first_contact_ref')
+        follow = proof.get('follow_up_refs')
+        refs([first], p + '.unlanded_evidence.first_contact_ref', True)
+        refs(follow, p + '.unlanded_evidence.follow_up_refs', True)
+        req(criteria['reply']['state'] == 'yes' and any(
+            own[r].get('source_role') == 'customer' and not own[r].get('is_system_greeting')
+            for r in criteria['reply']['refs']), p, '须有客户真实回复')
+        req(criteria['need']['state'] in ('unknown', 'no'), p, '已落地需求不能判需求未落地')
+        req(len(follow) >= minimum and first not in follow and own[first].get('source_role') == 'sales',
+            p, '须有独立首次触达和足够次数的有效跟进')
+        started = date(own[first]['time'], p + '.first_contact')
+        try:
+            req(as_of - started >= timedelta(hours=hours), p, '尚未达到需求未落地观察时限')
+            for rid in follow:
+                req(own[rid].get('source_role') == 'sales' and date(own[rid]['time'], p) > started,
+                    p, '跟进须为首次触达之后的销售消息')
+        except TypeError:
+            req(False, p, '首触及跟进的时区与截止时点不一致')
+
     if status == 'scope_unknown':
         key = 'scope' if a['reason_code'] == 'scope_unknown' else 'delivery'
         req(criteria[key]['state'] == 'unknown', p, '待核原因必须与尚未确定的条件一致')
     if status == 'pending' and a['reason_code'] == 'need_unknown':
-        req(criteria['need']['state'] == 'unknown', p, '需求待判须说明具体需求未知')
+        req(criteria['need']['state'] == 'unknown' or (policy.get('require_progress') is True and criteria['need']['state'] == 'yes'), p, '需求待判须说明具体需求未知')
     if status == 'pending' and a['reason_code'] == 'reply_unknown':
         req(criteria['reply']['state'] in ('unknown', 'not_observed'), p, '回复待判不能同时标为已真实回复')
     if status == 'pending' and a['reason_code'] == 'history_incomplete':

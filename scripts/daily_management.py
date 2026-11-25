@@ -160,7 +160,12 @@ def build(data, api, previous=None, history=None):
             add(c,labels[signal['kind']],signal['reason'],1 if signal['kind']=='manager_needed' else 2,'signal',signal['id'])
         if baseline and lifecycle.sales_applicable(c):
             delta=[]
-            if c['validity']['status']!=old['validity']['status']:delta.append('有效等级变化')
+            if c['validity']['status'] != old['validity']['status']:
+                current_policy = (c['validity'].get('assessment') or {}).get('policy_version')
+                previous_policy = (old['validity'].get('assessment') or {}).get('policy_version')
+                if current_policy and current_policy == previous_policy:
+                    delta.append('有效等级变化')
+                # Different policies have separate snapshots and no comparable delta.
             if cm['trial']['paid']!=old['trial']['paid']:delta.append('试听付款状态变化')
             if cm['trial']['completed']!=old['trial']['completed']:delta.append('实际完课状态变化')
             if cm['formal']['confirmed']!=old['formal']['confirmed']:delta.append('正式购买状态变化')
@@ -229,15 +234,16 @@ def render(data, api, view):
     rows=''.join(f'<tr><td>{api.e(a["name"])}</td><td>{api.e(a["owner"])}</td><td>{api.e(a["action"])}</td><td>{api.e(a["effective"]["label"])}</td><td>{api.e(a.get("next_check_at") or a.get("due_at") or "节点待核")}</td></tr>' for a in view['actions'])
     baseline=api.e(view['baseline_as_of'] or '无可用基线，本次为首次观察')
     metrics=mr.metrics(data)
+    invalid_note = f'统计期无效合计 {len(metrics["invalid"])}，其中需求未落地 {len(metrics["need_unlanded"])}。'
     formal=str(len(metrics['formal'])) if metrics['formal'] or data['scope']['orders_complete'] else '待核'
     mean=f'¥{metrics["mean"]:,.0f}' if metrics['mean'] is not None else '待核'
     findings=''.join('<div class="reason"><b>'+api.e(f['claim'])+'</b><p>'+api.e(f['action'])+'</p>'+''.join('<button type="button" data-case="'+api.e(cid)+'">查看 '+api.e(cid)+' 原话</button>' for cid in f['case_ids'])+'<p class="muted">'+api.e(f['limit'])+'</p></div>' for f in data['management']['summary'])
-    numbers=f'<section class="panel"><div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="metric"><b>{len(metrics["week"])}</b><small>当日有记录的会话</small></div><div class="metric"><b>{metrics["new_confirmed"]}</b><small>确认当日新接客户</small></div><div class="metric"><b>{len(metrics["valid"])}</b><small>当日会话中确定有效</small></div><div class="metric"><b>{len(metrics["trial_paid"])}</b><small>当日确认试听付款</small></div><div class="metric"><b>{formal}</b><small>当日确认正式购买</small></div><div class="metric"><b>{mean}</b><small>当日正式订单均单实收</small></div></div><p class="muted">会话不等于新客；新增归属待核{metrics["new_unknown"]}位。付款日期不明和订单覆盖不足不补成0。这里不计算“当天成交/当天新增”的伪转化率。</p>{findings}</section>'
+    numbers=f'<p>{invalid_note}</p><section class="panel"><div class="metrics" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="metric"><b>{len(metrics["week"])}</b><small>当日有记录的会话</small></div><div class="metric"><b>{metrics["new_confirmed"]}</b><small>确认当日新接客户</small></div><div class="metric"><b>{len(metrics["valid"])}</b><small>当日会话中确定有效</small></div><div class="metric"><b>{len(metrics["trial_paid"])}</b><small>当日确认试听付款</small></div><div class="metric"><b>{formal}</b><small>当日确认正式购买</small></div><div class="metric"><b>{mean}</b><small>当日正式订单均单实收</small></div></div><p class="muted">会话不等于新客；新增归属待核{metrics["new_unknown"]}位。付款日期不明和订单覆盖不足不补成0。这里不计算“当天成交/当天新增”的伪转化率。</p>{findings}</section>'
     panel=f'''<section class="panel" id="daily-priority"><h2>今天先处理什么 · {len(view['priority'])}项</h2><p class="muted">对照截至：{baseline}；本次资料截至：{api.e(view['as_of'])}</p><p><b>数据状态：{api.e(view['source_health'])}</b> · {api.e(view['source_note'])}</p>{cards(view['priority'])}<details><summary>其他需关注事项 · {len(view['other_attention'])}项</summary>{cards(view['other_attention'])}</details><details><summary>新进展和已关闭事项 · {len(view['progress'])}项</summary>{cards(view['progress'])}</details><p class="muted">{api.e(view['note'])}</p></section><section class="panel"><details><summary>全部动作状态 · {len(view['actions'])}项</summary><div class="table-scroll"><table><tr><th>客户</th><th>负责人</th><th>动作</th><th>当前状态</th><th>节点</th></tr>{rows}</table></div></details></section>'''
     quality=quality_and_cohorts.render(quality_and_cohorts.build(data),api)
     life=metrics.get('lifecycle')
     if life:
-        numbers=f'<section class="panel"><div class="metrics"><div class="metric"><b>{life["new_customers"]}</b><small>本日确认新接客户</small></div><div class="metric"><b>{life["known_active_customers"]}</b><small>本日有记录的已识别客户</small></div><div class="metric"><b>{life["active_effective_customers"]}</b><small>本日销售沟通中的有效客户</small></div><div class="metric"><b>{life["non_sales_cases"]}</b><small>服务／闲聊等非销售案例</small></div><div class="metric"><b>{formal}</b><small>本日确认正式购买需求</small></div></div><p class="muted">身份待核{len(life["identity_unknown_case_ids"])}案；用途待核{life["scope_unknown_cases"]}案。{api.e(life["note"])}</p><p>本日事件：{api.e({lifecycle.EVENTS[k]:v for k,v in life["event_counts"].items()})}</p>{findings}</section>'
+        numbers=f'<p>{invalid_note}</p><section class="panel"><div class="metrics"><div class="metric"><b>{life["new_customers"]}</b><small>本日确认新接客户</small></div><div class="metric"><b>{life["known_active_customers"]}</b><small>本日有记录的已识别客户</small></div><div class="metric"><b>{life["active_effective_customers"]}</b><small>本日销售沟通中的有效客户</small></div><div class="metric"><b>{life["non_sales_cases"]}</b><small>服务／闲聊等非销售案例</small></div><div class="metric"><b>{formal}</b><small>本日确认正式购买需求</small></div></div><p class="muted">身份待核{len(life["identity_unknown_case_ids"])}案；用途待核{life["scope_unknown_cases"]}案。{api.e(life["note"])}</p><p>本日事件：{api.e({lifecycle.EVENTS[k]:v for k,v in life["event_counts"].items()})}</p>{findings}</section>'
         numbers+=f'<p class="muted">首次添加或新增归属待核：{len(life["new_status_unknown_case_ids"])}案，不当作确认非新客。</p>'
         comparison_rows=''.join(f'<tr><td><button data-case="{api.e(x["case_id"])}">{api.e(x["case_id"])}</button></td><td>{api.e(lifecycle.CONTEXTS[x["context"]])}</td><td>{api.e(x["baseline_as_of"] or "没有可核实历史基线")}</td><td>{api.e(x["previous_headline"] or "不编造昨日结论")}</td><td>{api.e(x["current_headline"])}</td></tr>' for x in view['comparisons'])
         panel+=f'<section class="panel"><details><summary>同一案例如何接续 · 历史与本次</summary><div class="table-scroll"><table><tr><th>案例</th><th>本次场景</th><th>历史截至</th><th>历史结论</th><th>本次结论</th></tr>{comparison_rows}</table></div></details></section>'

@@ -24,7 +24,7 @@ GROUPS = {"rescue": "重点补救", "trial_followup": "正常首课跟进",
           "order_check": "仅订单核实", "routine": "正常推进",
           "historical": "历史复盘", "low_priority": "暂不逐案详谈", "excluded": "不纳入"}
 VALIDITY = {"high": "优质有效", "effective": "基础有效", "pending": "待判定",
-            "scope_unknown": "范围待核", "invalid": "无效", "not_applicable": "本次不评销售有效性"}
+            "scope_unknown": "范围待核", "need_unlanded": "无效·需求未落地", "invalid": "无效", "not_applicable": "本次不评销售有效性"}
 FORMAL = {"confirmed": "正式成交已确认", "not_confirmed": "截至记录未确认正式成交",
           "unknown": "正式成交待核"}
 FIRST = {"paid": "首课已付费", "completed": "首课已完成", "accepted": "已接受首课，付款待核",
@@ -165,21 +165,28 @@ def validate(data):
         validity = obj(field(case, "validity", p), p + ".validity")
         choice(field(validity, "status", p + ".validity"), VALIDITY, p + ".validity.status")
         string(field(validity, "reason", p + ".validity"), p + ".validity.reason")
-        refs(field(validity, "refs", p + ".validity"), p + ".validity.refs")
+        assessment = obj(validity["assessment"], p + ".validity.assessment") if "assessment" in validity else {}
+        payment = obj(assessment["payment"], p + ".validity.payment") if assessment.get("payment") is not None else {}
+        refs(field(validity, "refs", p + ".validity"), p + ".validity.refs", nonempty=payment.get("confirmed") is not True)
         if validity['status']=='not_applicable':
             require(case.get('management',{}).get('lifecycle',{}).get('sales_applicable') is False,p+'.validity','不适用必须有非销售沟通依据')
         if "price_silence" in validity:
             import validity_evidence
             validity_evidence.validate_price_silence(validity, messages, period["cutoff"], sys.modules[__name__])
+        if validity['status'] == 'need_unlanded':
+            require('assessment' in validity, p + '.validity', '需求未落地须提供逐项证据')
         if "assessment" in validity:
             import validity_evidence
-            validity_evidence.validate(validity["assessment"], messages, validity["status"], period["cutoff"], sys.modules[__name__])
+            validity_evidence.validate(validity["assessment"], messages, validity["status"], period["cutoff"], sys.modules[__name__], validity["refs"])
             identity = validity["assessment"]["identity"]
             if identity["account_id"] is not None:
                 require(identity["account_id"] == sid, p + ".validity.assessment.identity", "有效性身份账号与报告归属不一致")
         order = obj(field(case, "order", p), p + ".order")
         choice(field(order, "formal", p + ".order"), FORMAL, p + ".order.formal")
         choice(field(order, "first_lesson", p + ".order"), FIRST, p + ".order.first_lesson")
+        if validity['status'] == 'need_unlanded':
+            require(order['formal'] != 'confirmed' and order['first_lesson'] != 'paid',
+                    p + '.validity', '本需求已确认成交或付费不能判需求未落地')
         string(field(order, "summary", p + ".order"), p + ".order.summary")
         refs(field(order, "refs", p + ".order"), p + ".order.refs")
         if scope["orders_complete"]:
@@ -471,7 +478,8 @@ def render(data, css):
         p, order = case["position"], case["order"]
         nature = "、".join(n["name"] for n in case["nature"] if n["state"] == "gap") or "未证实三性缺口"
         rows.append(f'<tr data-review-row data-group="{e(case["group"])}" data-stage="{e(p["main_stage"] or "unknown")}" data-search="{e(case["id"] + " " + case["name"])}"><td>{e(case["date"])}</td><td><a href="#{e(case["id"])}"><b>{e(case["name"])}</b></a><small>{e(case["id"])} · {e(validity_label(case["validity"]))}</small><span class="tag {e(case["group"])}">{e(GROUPS[case["group"]])}</span></td><td class="outcome"><b>{e(FORMAL[order["formal"]])}</b><small>{e(FIRST[order["first_lesson"]])}</small><p>{lines(order["summary"])}</p></td>' + ''.join(phase_cell(case["phases"][key]) for key in STAGES) + f'<td><b>{e(stage_label(p["main_stage"]))}</b><small>{e(nature)}</small></td><td>{lines(case["current_problem"])}</td><td class="comparison">' + ''.join(quote(case, mid, True) for mid in case["summary_refs"]) + f'<a href="#{e(case["id"])}">看原因、补救与话术 →</a></td></tr>')
-    validity_text = "；".join(f'{VALIDITY[key]} {counts["validity"].get(key, 0)}' for key in VALIDITY)
+    invalid_total = sum(counts["validity"].get(key, 0) for key in ("invalid", "need_unlanded"))
+    validity_text = f"无效合计 {invalid_total}；" + "；".join(f'{VALIDITY[key]} {counts["validity"].get(key, 0)}' for key in VALIDITY)
     valid = [c for c in cases if c["validity"]["status"] in ("high", "effective")]
     pending = any(c["validity"]["status"] in ("pending", "scope_unknown") for c in cases)
     if data["scope"]["cohort"] == "new_clients" and data["scope"]["orders_complete"] and not pending and valid:
